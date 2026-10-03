@@ -1,4 +1,5 @@
 import { BRANDS, statusFor, type BrandId } from "@/lib/platforms";
+import { youtubeSummary } from "@/lib/youtube";
 
 export const dynamic = "force-dynamic";
 
@@ -6,6 +7,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ b
   const { brand: q } = await searchParams;
   const brand: BrandId = BRANDS.some((b) => b.id === q) ? (q as BrandId) : "houscaper";
   const statuses = statusFor(brand);
+  const yt = statuses.find((s) => s.platform.id === "youtube")?.connected ? await youtubeSummary(brand) : null;
   const connected = statuses.filter((s) => s.connected).length;
   return (
     <main>
@@ -29,6 +31,15 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ b
                 <p className="label">Vercel 환경변수에 필요:</p>
                 <ul>{missing.map((k) => <li key={k}><code>{k}</code></li>)}</ul>
               </>
+            )}
+            {ok && platform.id === "youtube" && yt && (
+              yt.ok ? (
+                <>
+                  <p className="label">{yt.channelTitle} · 구독자 {yt.subscribers == null ? "비공개" : yt.subscribers.toLocaleString("ko-KR")}</p>
+                  <p className="label">최근 영상 조회수</p>
+                  <ul>{yt.videos.map((v) => <li key={v.id}>{v.title} — {v.views.toLocaleString("ko-KR")}</li>)}</ul>
+                </>
+              ) : <p className="note">{yt.reason}</p>
             )}
           </article>
         ))}

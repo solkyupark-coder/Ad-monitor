@@ -1,0 +1,23 @@
+:root { --bg:#0f1115; --card:#181b22; --line:#2a2f3a; --text:#e8eaf0; --mute:#9aa3b2; --ok:#3ecf8e; --warn:#f5a524; }
+@media (prefers-color-scheme: light) { :root { --bg:#f6f7f9; --card:#fff; --line:#dde1e8; --text:#161a22; --mute:#5b6577; } }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font-family: system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif; }
+main { max-width: 1080px; margin: 0 auto; padding: 24px 16px 64px; }
+header { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; }
+h1 { font-size: 20px; margin: 0; }
+.tabs { display:flex; gap:8px; }
+.tabs a { padding:8px 14px; border:1px solid var(--line); border-radius:999px; color:var(--mute); text-decoration:none; font-size:14px; }
+.tabs a.on { color:var(--text); border-color:var(--text); }
+.sub { color:var(--mute); font-size:14px; }
+.grid { display:grid; gap:12px; grid-template-columns: repeat(auto-fill,minmax(280px,1fr)); margin-top:16px; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }
+.card.ok { border-color: var(--ok); }
+.card h2 { font-size:16px; margin:0 0 6px; }
+.state { margin:0 0 8px; font-size:13px; color:var(--warn); } .card.ok .state { color:var(--ok); }
+.note, .label { font-size:13px; color:var(--mute); margin:6px 0; }
+ul { margin:4px 0 0; padding-left:18px; font-size:13px; } code { font-size:12px; word-break:break-all; }
+.login { max-width:360px; margin:20vh auto 0; padding:0 16px; }
+.login form { display:flex; flex-direction:column; gap:10px; margin-top:16px; }
+.login input, .login button { padding:12px; border-radius:8px; border:1px solid var(--line); font-size:16px; background:var(--card); color:var(--text); }
+.login button { cursor:pointer; background:var(--text); color:var(--bg); border:0; }
+.warn { color:var(--warn); font-size:14px; }

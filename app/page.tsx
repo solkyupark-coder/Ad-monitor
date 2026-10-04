@@ -1,5 +1,6 @@
 import { BRANDS, statusFor, type BrandId } from "@/lib/platforms";
 import { youtubeSummary } from "@/lib/youtube";
+import { metaSummary } from "@/lib/meta";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +9,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ b
   const brand: BrandId = BRANDS.some((b) => b.id === q) ? (q as BrandId) : "houscaper";
   const statuses = statusFor(brand);
   const yt = statuses.find((s) => s.platform.id === "youtube")?.connected ? await youtubeSummary(brand) : null;
+  const meta = statuses.find((s) => s.platform.id === "meta")?.connected ? await metaSummary(brand) : null;
   const connected = statuses.filter((s) => s.connected).length;
   return (
     <main>
@@ -31,6 +33,18 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ b
                 <p className="label">Vercel 환경변수에 필요:</p>
                 <ul>{missing.map((k) => <li key={k}><code>{k}</code></li>)}</ul>
               </>
+            )}
+            {ok && platform.id === "meta" && meta && (
+              meta.ok ? (
+                <>
+                  <p className="label">{meta.accountName} · 최근 7일</p>
+                  <ul>
+                    <li>지출 {meta.spend.toLocaleString("ko-KR")} {meta.currency}</li>
+                    <li>노출 {meta.impressions.toLocaleString("ko-KR")}</li>
+                    <li>클릭 {meta.clicks.toLocaleString("ko-KR")}</li>
+                  </ul>
+                </>
+              ) : <p className="note">{meta.reason}</p>
             )}
             {ok && platform.id === "youtube" && yt && (
               yt.ok ? (

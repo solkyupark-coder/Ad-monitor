@@ -1,9 +1,16 @@
 // 유튜브 읽기 전용 조회(YouTube Data API v3, scope: youtube.readonly). 자격증명/토큰 값은 화면·로그에 내지 않는다.
 import { BRANDS, type BrandId } from "@/lib/platforms";
 
-export type YoutubeVideo = { id: string; title: string; views: number };
+export type YoutubeVideo = { id: string; title: string; views: number; likes: number; comments: number; publishedAt: string };
 export type YoutubeSummary =
-  | { ok: true; channelTitle: string; subscribers: number | null; videos: YoutubeVideo[] }
+  | {
+      ok: true;
+      channelTitle: string;
+      subscribers: number | null;
+      totalViews: number;
+      videoCount: number;
+      videos: YoutubeVideo[];
+    }
   | { ok: false; reason: string };
 
 const API = "https://www.googleapis.com/youtube/v3";
@@ -45,7 +52,7 @@ export async function youtubeSummary(brand: BrandId): Promise<YoutubeSummary> {
     const ch = await get<{
       items?: {
         snippet: { title: string };
-        statistics: { subscriberCount?: string; hiddenSubscriberCount?: boolean };
+        statistics: { subscriberCount?: string; hiddenSubscriberCount?: boolean; viewCount?: string; videoCount?: string };
         contentDetails: { relatedPlaylists: { uploads: string } };
       }[];
     }>("channels", { part: "snippet,statistics,contentDetails", id: channelId }, token);
@@ -54,24 +61,37 @@ export async function youtubeSummary(brand: BrandId): Promise<YoutubeSummary> {
 
     const pl = await get<{ items?: { contentDetails: { videoId: string } }[] }>(
       "playlistItems",
-      { part: "contentDetails", playlistId: channel.contentDetails.relatedPlaylists.uploads, maxResults: "5" },
+      { part: "contentDetails", playlistId: channel.contentDetails.relatedPlaylists.uploads, maxResults: "8" },
       token,
     );
     const ids = (pl?.items ?? []).map((i) => i.contentDetails.videoId);
     let videos: YoutubeVideo[] = [];
     if (ids.length) {
-      const v = await get<{ items?: { id: string; snippet: { title: string }; statistics: { viewCount?: string } }[] }>(
-        "videos",
-        { part: "snippet,statistics", id: ids.join(",") },
-        token,
-      );
-      videos = (v?.items ?? []).map((x) => ({ id: x.id, title: x.snippet.title, views: Number(x.statistics.viewCount ?? 0) }));
+      const v = await get<{
+        items?: {
+          id: string;
+          snippet: { title: string; publishedAt: string };
+          statistics: { viewCount?: string; likeCount?: string; commentCount?: string };
+        }[];
+      }>("videos", { part: "snippet,statistics", id: ids.join(",") }, token);
+      videos = (v?.items ?? [])
+        .map((x) => ({
+          id: x.id,
+          title: x.snippet.title,
+          publishedAt: x.snippet.publishedAt,
+          views: Number(x.statistics.viewCount ?? 0),
+          likes: Number(x.statistics.likeCount ?? 0),
+          comments: Number(x.statistics.commentCount ?? 0),
+        }))
+        .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
     }
     const s = channel.statistics;
     return {
       ok: true,
       channelTitle: channel.snippet.title,
       subscribers: s.hiddenSubscriberCount || s.subscriberCount == null ? null : Number(s.subscriberCount),
+      totalViews: Number(s.viewCount ?? 0),
+      videoCount: Number(s.videoCount ?? 0),
       videos,
     };
   } catch {

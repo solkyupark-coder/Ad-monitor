@@ -19,9 +19,9 @@ export const PLATFORMS: PlatformDef[] = [
   {
     id: "meta",
     label: "메타 (페이스북·인스타 광고)",
-    shared: ["META_ACCESS_TOKEN"],
-    perBrand: ["META_AD_ACCOUNT_ID", "META_PAGE_ID"],
-    note: "Meta 개발자 앱 + 장기 액세스 토큰. 본인 계정만 쓰면 개발 모드로 심사 없이 가능.",
+    shared: [],
+    perBrand: ["META_ACCESS_TOKEN", "META_AD_ACCOUNT_ID", "META_PAGE_ID"],
+    note: "브랜드마다 Meta 앱이 따로라 토큰도 브랜드별. 장기(60일) 토큰 또는 시스템 사용자 토큰 필요. 본인 계정만 쓰면 개발 모드로 심사 없이 가능.",
   },
   {
     id: "google_ads",

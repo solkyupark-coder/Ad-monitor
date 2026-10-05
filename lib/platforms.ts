@@ -13,6 +13,7 @@ type PlatformDef = {
   shared: string[]; // 두 브랜드 공통 자격증명
   perBrand: string[]; // `${PREFIX}_${name}` 형태로 브랜드마다 필요
   extra?: Partial<Record<BrandId, string[]>>; // 브랜드마다 다른 전체 이름 (접두사 규칙을 따르지 않는 값)
+  fallback?: Partial<Record<BrandId, string[]>>; // extra 가 없을 때 대신 연결로 인정하는 묶음(이전 방식)
   note: string;
 };
 
@@ -52,9 +53,12 @@ export const PLATFORMS: PlatformDef[] = [
     perBrand: [],
     extra: {
       houscaper: ["POLAR_ACCESS_TOKEN"],
+      topogenesis: ["TOPOGENESIS_POLAR_ACCESS_TOKEN"],
+    },
+    fallback: {
       topogenesis: ["TOPOGENESIS_SUPABASE_URL", "TOPOGENESIS_SUPABASE_READONLY_KEY"],
     },
-    note: "하우스케이퍼는 Polar 주문(읽기 전용 토큰), 토포제네시스는 Supabase purchase 테이블(읽기 전용 키) 기준.",
+    note: "두 브랜드 모두 Polar 주문 기준(브랜드별 조직의 읽기 전용 토큰, orders:read). 토포제네시스는 Polar 토큰이 없을 때만 예전 Supabase purchase 테이블로 대신 센다.",
   },
   {
     id: "reddit",
@@ -76,6 +80,7 @@ export type PlatformStatus = {
   platform: PlatformDef;
   missing: string[];
   connected: boolean;
+  viaFallback: boolean; // 기본 자격증명 대신 이전 방식(fallback)으로 연결됨
 };
 
 export function statusFor(brand: BrandId, env: NodeJS.ProcessEnv = process.env): PlatformStatus[] {
@@ -87,7 +92,9 @@ export function statusFor(brand: BrandId, env: NodeJS.ProcessEnv = process.env):
       ...(platform.extra?.[brand] ?? []),
     ];
     const missing = needed.filter((k) => !env[k]);
-    return { platform, missing, connected: missing.length === 0 };
+    const fb = platform.fallback?.[brand];
+    const viaFallback = missing.length > 0 && !!fb && fb.every((k) => env[k]);
+    return { platform, missing, connected: missing.length === 0 || viaFallback, viaFallback };
   });
 }
 
@@ -98,6 +105,8 @@ export const OPTIONAL_ENV = [
   "DASHBOARD_UTC_OFFSET_HOURS", // 실매출 날짜 경계. 기본 9(한국)
   "REDDIT_REDIRECT_URI", // 레딧 앱에 등록한 redirect. 기본은 접속한 사이트 주소(루트)
   "YOUTUBE_REDIRECT_URI", // 구글 클라이언트에 등록한 redirect. 기본은 {사이트}/api/youtube/callback
+  "TOPOGENESIS_SUPABASE_URL", // Polar 토큰이 없을 때만 쓰는 이전 방식(Supabase purchase)
+  "TOPOGENESIS_SUPABASE_READONLY_KEY", // 〃
   "TOPOGENESIS_PURCHASE_TABLE", // 기본 purchase
   "TOPOGENESIS_PURCHASE_DATE_COLUMN", // 기본 created_at
   "TOPOGENESIS_PURCHASE_AMOUNT_COLUMN", // 기본 amount (빈 값이면 건수만 집계)

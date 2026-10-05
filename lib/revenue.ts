@@ -1,4 +1,5 @@
-// 실제 결제 기준 매출(읽기 전용). 하우스케이퍼: Polar 주문, 토포제네시스: Supabase purchase 테이블.
+// 실제 결제 기준 매출(읽기 전용). 두 브랜드 모두 Polar 주문(브랜드별 조직 토큰).
+// 토포제네시스는 TOPOGENESIS_POLAR_ACCESS_TOKEN 이 없을 때만 예전 Supabase purchase 테이블로 대신 센다.
 // 토큰·키 값은 화면·로그에 내지 않는다.
 import type { BrandId } from "@/lib/platforms";
 import { rangeInstants, type DateRange } from "@/lib/range";
@@ -11,8 +12,14 @@ const ZERO_DECIMAL = new Set(["KRW", "JPY", "VND", "CLP", "ISK", "UGX", "XAF", "
 
 type PolarOrder = { created_at?: string; status?: string; paid?: boolean; net_amount?: number; total_amount?: number; currency?: string };
 
-async function polar(range: DateRange): Promise<RevenueSummary> {
-  const token = process.env.POLAR_ACCESS_TOKEN;
+// 브랜드별 Polar 토큰 env 이름. 조직 토큰은 그 조직 주문만 보이므로 브랜드가 섞이지 않는다.
+export const POLAR_TOKEN_ENV: Record<BrandId, string> = {
+  houscaper: "POLAR_ACCESS_TOKEN",
+  topogenesis: "TOPOGENESIS_POLAR_ACCESS_TOKEN",
+};
+
+async function polar(tokenEnv: string, range: DateRange): Promise<RevenueSummary> {
+  const token = process.env[tokenEnv];
   if (!token) return { ok: false, reason: "자격증명 없음" };
   const { since, until } = rangeInstants(range);
   const mine: PolarOrder[] = [];
@@ -23,7 +30,7 @@ async function polar(range: DateRange): Promise<RevenueSummary> {
         headers: { authorization: `Bearer ${token}` },
         next: { revalidate: 600 },
       });
-      if (res.status === 401 || res.status === 403) return { ok: false, reason: "Polar 토큰 거절 — 읽기 전용 토큰과 권한(orders:read)을 확인하세요" };
+      if (res.status === 401 || res.status === 403) return { ok: false, reason: `Polar 토큰 거절(${tokenEnv}) — 읽기 전용 토큰과 권한(orders:read)을 확인하세요` };
       if (!res.ok) return { ok: false, reason: "Polar 조회 실패" };
       const json = (await res.json()) as { items?: PolarOrder[] };
       const items = json.items ?? [];
@@ -79,5 +86,8 @@ async function supabasePurchases(prefix: string, range: DateRange): Promise<Reve
 }
 
 export async function revenueSummary(brand: BrandId, range: DateRange): Promise<RevenueSummary> {
-  return brand === "houscaper" ? polar(range) : supabasePurchases("TOPOGENESIS", range);
+  const tokenEnv = POLAR_TOKEN_ENV[brand];
+  if (process.env[tokenEnv] || brand === "houscaper") return polar(tokenEnv, range);
+  // 토포제네시스 Polar 토큰이 아직 없으면 예전 Supabase purchase 테이블로 대신한다(마이그레이션 기간용).
+  return supabasePurchases("TOPOGENESIS", range);
 }

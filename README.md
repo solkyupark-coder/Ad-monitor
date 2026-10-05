@@ -18,7 +18,7 @@
 | 플랫폼 | 공통 | 브랜드별 | OAuth scope |
 |---|---|---|---|
 | GA4 | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GA_REFRESH_TOKEN` | `GA4_PROPERTY_ID` | `analytics.readonly` |
-| 실매출 | — | 하우스케이퍼 `POLAR_ACCESS_TOKEN` / 토포제네시스 `TOPOGENESIS_SUPABASE_URL`, `TOPOGENESIS_SUPABASE_READONLY_KEY` | Polar: 읽기 전용(주문 조회) 토큰 |
+| 실매출 | — | 하우스케이퍼 `POLAR_ACCESS_TOKEN` / 토포제네시스 `TOPOGENESIS_POLAR_ACCESS_TOKEN` | Polar 조직 토큰, `orders:read` |
 | 구글 광고 | `GOOGLE_ADS_REFRESH_TOKEN` (+ OAuth 클라이언트) | `GOOGLE_ADS_CUSTOMER_ID` (숫자 10자리) | `adwords` |
 | 유튜브 | OAuth 클라이언트 | `YOUTUBE_REFRESH_TOKEN`, `YOUTUBE_CHANNEL_ID` | `youtube.readonly` |
 | 메타 | — | `META_ACCESS_TOKEN`, `META_AD_ACCOUNT_ID` | `ads_read` |
@@ -27,7 +27,14 @@
 
 구글 광고 개발자 토큰은 2026-09-09에 종료됐다. 접근 수준(Explorer/Basic 등)은 OAuth 클라이언트가 속한 Google Cloud 프로젝트(`ferrous-arena-510513-p2`)에 붙으므로, refresh token은 반드시 이 프로젝트의 클라이언트(`GOOGLE_OAUTH_CLIENT_ID`)로 발급해야 한다.
 
-선택 env(없으면 기본값): `GOOGLE_ADS_LOGIN_CUSTOMER_ID`(관리자 계정으로 접근할 때), `GOOGLE_ADS_API_VERSION`(기본 v25), `DASHBOARD_UTC_OFFSET_HOURS`(기본 9), `TOPOGENESIS_PURCHASE_TABLE`(purchase) · `_DATE_COLUMN`(created_at) · `_AMOUNT_COLUMN`(amount, 빈 값이면 건수만) · `_CURRENCY`(KRW) · `_AMOUNT_DIVISOR`(1).
+### 실매출(Polar) — 토포제네시스 Supabase에서 옮기기
+두 브랜드 모두 Polar 주문(`/v1/orders`, 결제 완료만)으로 센다. Polar 조직 토큰은 그 조직의 주문만 보이므로 브랜드마다 따로 발급한다.
+1. Polar 대시보드에서 **토포제네시스 조직**으로 전환 → Settings → Developers → New token, 권한은 `orders:read`만.
+2. Vercel에 `TOPOGENESIS_POLAR_ACCESS_TOKEN`(Sensitive, Production)으로 넣고 재배포한다. 값은 채팅·커밋에 쓰지 않는다.
+3. 실매출 패널 상단이 "Polar"로 바뀌면 끝. 토큰이 없으면 예전처럼 `TOPOGENESIS_SUPABASE_URL`·`TOPOGENESIS_SUPABASE_READONLY_KEY`의 purchase 테이블로 대신 세고, 패널에 "Supabase purchase (이전 방식)"과 전환 안내가 보인다.
+4. Polar로 바뀐 걸 확인한 뒤 Supabase 실매출 env(`TOPOGENESIS_SUPABASE_*`, `TOPOGENESIS_PURCHASE_*`)는 다른 용도가 없으면 정리해도 된다.
+
+선택 env(없으면 기본값): `GOOGLE_ADS_LOGIN_CUSTOMER_ID`(관리자 계정으로 접근할 때), `GOOGLE_ADS_API_VERSION`(기본 v25), `DASHBOARD_UTC_OFFSET_HOURS`(기본 9), 토포제네시스 Polar 토큰이 없을 때만: `TOPOGENESIS_SUPABASE_URL`, `TOPOGENESIS_SUPABASE_READONLY_KEY`, `TOPOGENESIS_PURCHASE_TABLE`(purchase) · `_DATE_COLUMN`(created_at) · `_AMOUNT_COLUMN`(amount, 빈 값이면 건수만) · `_CURRENCY`(KRW) · `_AMOUNT_DIVISOR`(1).
 
 이 앱이 읽지 않는 env(`lib/platforms.ts` 의 `UNUSED_ENV`): `META_ACCESS_TOKEN`·`META_AD_ACCOUNT_ID`(공통 이름), `GOOGLE_ADS_DEVELOPER_TOKEN`(종료), `*_META_PAGE_ID`, `META_BUSINESS_PORTFOLIO_ID`, `INSTAGRAM_*`, `FACEBOOK_PAGE_*`, `NEXT_PUBLIC_GA_MEASUREMENT_ID`. 다른 용도가 없을 때만 정리한다.
 

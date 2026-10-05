@@ -206,7 +206,7 @@ export function RevenuePanel({ real, ga, range }: { real: RevenueSummary; ga: Ga
       <div className="panel-head">
         <h2>실매출 (실제 결제 기준)</h2>
         <p className="meta">
-          {range.label}{real.ok ? ` · ${real.source === "polar" ? "Polar" : "Supabase purchase"}` : ""}
+          {range.label}{real.ok ? ` · ${real.source === "polar" ? "Polar" : "Supabase purchase (이전 방식)"}` : ""}
         </p>
       </div>
       {real.ok ? (
@@ -224,6 +224,9 @@ export function RevenuePanel({ real, ga, range }: { real: RevenueSummary; ga: Ga
         </div>
       ) : (
         <p className="note">{real.reason}</p>
+      )}
+      {real.ok && real.source === "supabase" && (
+        <p className="fine">Polar 토큰(TOPOGENESIS_POLAR_ACCESS_TOKEN)이 아직 없어 Supabase purchase 테이블로 세고 있습니다. 토큰을 넣고 재배포하면 Polar 주문 기준으로 바뀝니다.</p>
       )}
       {real.ok && real.truncated && <p className="fine">주문이 많아 일부만 집계됐을 수 있습니다.</p>}
       {cmp && cmp.level === "warn" && (

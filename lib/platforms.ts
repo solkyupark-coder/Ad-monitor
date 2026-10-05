@@ -61,7 +61,7 @@ export const PLATFORMS: PlatformDef[] = [
     label: "레딧",
     shared: ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET"],
     perBrand: ["REDDIT_REFRESH_TOKEN", "REDDIT_AD_ACCOUNT_ID"],
-    note: "광고 API는 별도 접근 신청이 필요할 수 있음.",
+    note: "광고 API는 별도 접근 신청이 필요할 수 있음. refresh token은 카드의 '레딧 연결하기'로 발급(adsread, 1회 표시).",
   },
   {
     id: "tiktok",
@@ -96,6 +96,7 @@ export const OPTIONAL_ENV = [
   "GOOGLE_ADS_LOGIN_CUSTOMER_ID", // 관리자(MCC) 계정으로 접근할 때만
   "GOOGLE_ADS_API_VERSION", // 기본 v25. 구버전은 정해진 날짜에 종료된다
   "DASHBOARD_UTC_OFFSET_HOURS", // 실매출 날짜 경계. 기본 9(한국)
+  "REDDIT_REDIRECT_URI", // 레딧 앱에 등록한 redirect. 기본은 접속한 사이트 주소(루트)
   "TOPOGENESIS_PURCHASE_TABLE", // 기본 purchase
   "TOPOGENESIS_PURCHASE_DATE_COLUMN", // 기본 created_at
   "TOPOGENESIS_PURCHASE_AMOUNT_COLUMN", // 기본 amount (빈 값이면 건수만 집계)

@@ -187,6 +187,14 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ b
                 <h2>{platform.label}</h2>
                 <p className="state">연결 필요</p>
                 <p className="note">{platform.note}</p>
+                {platform.id === "reddit" && missing.length === 1 && missing[0].endsWith("_REDDIT_REFRESH_TOKEN") && (
+                  <p>
+                    <a className="connect" href={`/api/reddit/connect?brand=${brand}`}>
+                      레딧 연결하기
+                    </a>
+                    <span className="fine"> 레딧 승인 후 refresh token을 한 번 보여 줍니다.</span>
+                  </p>
+                )}
                 <p className="label">Vercel 환경변수에 필요:</p>
                 <ul>
                   {missing.map((k) => (

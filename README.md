@@ -31,10 +31,17 @@
 
 이 앱이 읽지 않는 env(`lib/platforms.ts` 의 `UNUSED_ENV`): `META_ACCESS_TOKEN`·`META_AD_ACCOUNT_ID`(공통 이름), `GOOGLE_ADS_DEVELOPER_TOKEN`(종료), `*_META_PAGE_ID`, `META_BUSINESS_PORTFOLIO_ID`, `INSTAGRAM_*`, `FACEBOOK_PAGE_*`, `NEXT_PUBLIC_GA_MEASUREMENT_ID`. 다른 용도가 없을 때만 정리한다.
 
+## 레딧 refresh token 발급 (`/api/reddit/connect`)
+1. `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `{브랜드}_REDDIT_AD_ACCOUNT_ID`가 있고 refresh token만 없으면 레딧 카드에 "레딧 연결하기" 버튼이 보인다.
+2. **`https://ad-monitor-eight.vercel.app`에 로그인한 상태에서** 누른다. 레딧 앱의 redirect URI가 이 주소(루트)여야 한다. 다른 주소로 접속하면 redirect가 달라져 레딧이 거절한다(`REDDIT_REDIRECT_URI`로 고정 가능).
+3. 레딧에서 허용하면 사이트 루트로 돌아오고, 미들웨어가 콜백(`/api/reddit/callback`)으로 넘겨 code를 refresh token으로 교환한다.
+4. 토큰은 **한 번만 화면에 보이고** 서버 저장·캐시·로그는 하지 않는다. 그 값을 Vercel `{브랜드}_REDDIT_REFRESH_TOKEN`(Sensitive)에 넣고 재배포한다.
+
 ## 의심 트래픽 판정 (`lib/traffic.ts`)
 - 데이터센터 도시: Ashburn, Boardman, Council Bluffs, The Dalles, Drexel Hill, Columbus (목록은 `DATACENTER_CITIES`).
 - 낮은 참여: 표본 5세션 이상이고 세션당 평균 참여시간이 5초 미만인 소스/매체·국가. 국가 판정은 데이터센터 행을 뺀 뒤 계산한다.
-- 실사용자 추정 = 활성 사용자 − (데이터센터 도시 + 낮은 참여 국가의 사용자). 소스/매체 플래그는 표시만 하고 차감하지 않는다(지역과 겹칠 수 있음).
+- 화면 기본값은 의심 트래픽을 뺀 실수치다: 사용자 = 활성 사용자 − (데이터센터 도시 + 낮은 참여 국가), 세션·참여 세션·참여시간·GA 구매도 같은 행을 뺀다(7일·28일 각각). 소스/매체 표는 낮은 참여 소스를 숨기되 합계에서는 빼지 않는다(지역과 겹칠 수 있음).
+- 제외된 값은 GA4 패널 아래 접힌 "제외된 의심 트래픽 보기"에서만 보인다.
 
 ## 릴스 게시 도구 (대시보드와 분리)
 대시보드는 읽기 전용이고, 게시는 별도 명령줄 도구 `scripts/publish-reel.mjs` 가 한다. 게시 토큰은 Vercel에 넣지 않는다.

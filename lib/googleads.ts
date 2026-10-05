@@ -1,6 +1,6 @@
 // 구글 광고 읽기 전용 조회(Google Ads API, REST + GAQL). 토큰·ID 값은 화면·로그에 내지 않는다.
 // 개발자 토큰이 승인되기 전에는 '연결 필요'/오류 문구만 보이고, 승인되면 그대로 동작한다.
-import { googleAccessToken } from "@/lib/google";
+import { googleToken, logFailure, tokenFailureReason } from "@/lib/google";
 import { BRANDS, type BrandId } from "@/lib/platforms";
 import { yesterdayDate } from "@/lib/revenue";
 
@@ -49,8 +49,12 @@ export async function googleAdsSummary(brand: BrandId): Promise<GoogleAdsSummary
   const loginId = digits(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID);
   const version = /^v\d+$/.test(process.env.GOOGLE_ADS_API_VERSION ?? "") ? process.env.GOOGLE_ADS_API_VERSION : "v25";
   try {
-    const token = await googleAccessToken(refresh);
-    if (!token) return { ok: false, reason: "토큰 갱신 실패 — adwords 동의를 다시 받아 GOOGLE_ADS_REFRESH_TOKEN을 교체하세요" };
+    const t = await googleToken(refresh);
+    if (!t.ok) {
+      logFailure("google-ads", brand, `token ${t.error}`);
+      return { ok: false, reason: tokenFailureReason(t.error, "GOOGLE_ADS_REFRESH_TOKEN") };
+    }
+    const token = t.token;
     const headers: Record<string, string> = {
       authorization: `Bearer ${token}`,
       "developer-token": devToken,

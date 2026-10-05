@@ -1,5 +1,5 @@
 // GA4 Data API 읽기 전용 조회(scope: analytics.readonly). 토큰 값은 화면·로그에 내지 않는다.
-import { googleAccessToken } from "@/lib/google";
+import { googleToken, logFailure, tokenFailureReason } from "@/lib/google";
 import { BRANDS, type BrandId } from "@/lib/platforms";
 import { splitTraffic, flagSources, type FlaggedGeo, type FlaggedSource, type GeoRow, type SourceRow, type TrafficSplit } from "@/lib/traffic";
 
@@ -56,8 +56,12 @@ export async function ga4Summary(brand: BrandId): Promise<Ga4Summary> {
   const propertyId = (process.env[`${prefix}_GA4_PROPERTY_ID`] ?? "").replace(/\D/g, "");
   if (!refresh || !propertyId) return { ok: false, reason: "자격증명 없음" };
   try {
-    const token = await googleAccessToken(refresh);
-    if (!token) return { ok: false, reason: "토큰 갱신 실패 — analytics.readonly 동의를 다시 받아 GA_REFRESH_TOKEN을 교체하세요" };
+    const t = await googleToken(refresh);
+    if (!t.ok) {
+      logFailure("ga4", brand, `token ${t.error}`);
+      return { ok: false, reason: tokenFailureReason(t.error, "GA_REFRESH_TOKEN") };
+    }
+    const token = t.token;
     const run = (body: object) =>
       fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`, {
         method: "POST",
@@ -87,11 +91,22 @@ export async function ga4Summary(brand: BrandId): Promise<Ga4Summary> {
     ]);
     const bad = [ov, src, geo].find((r) => !r.ok);
     if (bad) {
-      if (bad.status === 401) return { ok: false, reason: "토큰 거절 — GA_REFRESH_TOKEN을 다시 발급하세요" };
-      if (bad.status === 403) return { ok: false, reason: "권한 없음 — 이 구글 계정이 해당 GA4 속성에 접근할 수 있는지 확인하세요" };
-      if (bad.status === 400 || bad.status === 404) return { ok: false, reason: "속성 ID를 확인하세요" };
+      const err = ((await bad.json().catch(() => ({}))) as { error?: { status?: string; message?: string } }).error;
+      const code = err?.status ?? `HTTP ${bad.status}`;
+      logFailure("ga4", brand, `property ${propertyId} ${bad.status} ${code} ${err?.message ?? ""}`.trim());
+      if (bad.status === 401) return { ok: false, reason: `토큰 거절 — GA_REFRESH_TOKEN을 다시 발급하세요 (${code})` };
+      if (bad.status === 403) {
+        if (/insufficient.*scope|ACCESS_TOKEN_SCOPE_INSUFFICIENT/i.test(err?.message ?? "")) {
+          return { ok: false, reason: `GA_REFRESH_TOKEN에 analytics.readonly 범위가 없습니다 — 그 범위로 다시 발급하세요 (${code})` };
+        }
+        if (/has not been used|is disabled|SERVICE_DISABLED/i.test(err?.message ?? "")) {
+          return { ok: false, reason: `Cloud 프로젝트에서 Google Analytics Data API를 사용 설정하세요 (${code})` };
+        }
+        return { ok: false, reason: `권한 없음 — 토큰을 발급한 구글 계정이 GA4 속성 ${propertyId}에 접근할 수 있는지 확인하세요 (${code})` };
+      }
+      if (bad.status === 400 || bad.status === 404) return { ok: false, reason: `속성 ID ${propertyId}를 확인하세요 (${code})` };
       if (bad.status === 429) return { ok: false, reason: "조회 한도 초과 — 잠시 뒤 다시 시도됩니다" };
-      return { ok: false, reason: "조회 실패" };
+      return { ok: false, reason: `조회 실패 (${code})` };
     }
     const ovJson = (await ov.json()) as GaResp;
     const byRange = (key: string) => ovJson.rows?.find((r) => r.dimensionValues?.[0]?.value === key);
@@ -127,7 +142,8 @@ export async function ga4Summary(brand: BrandId): Promise<Ga4Summary> {
       split,
       geoTruncated: (geoJson.rowCount ?? geoRows.length) > GEO_LIMIT,
     };
-  } catch {
+  } catch (e) {
+    logFailure("ga4", brand, `network ${e instanceof Error ? e.message : String(e)}`);
     return { ok: false, reason: "조회 실패(네트워크)" };
   }
 }

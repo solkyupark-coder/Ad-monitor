@@ -1,5 +1,5 @@
 // 유튜브 읽기 전용 조회(YouTube Data API v3, scope: youtube.readonly). 자격증명/토큰 값은 화면·로그에 내지 않는다.
-import { googleAccessToken } from "@/lib/google";
+import { googleToken, logFailure, tokenFailureReason } from "@/lib/google";
 import { BRANDS, type BrandId } from "@/lib/platforms";
 
 export type YoutubeVideo = { id: string; title: string; views: number; likes: number; comments: number; publishedAt: string };
@@ -30,8 +30,12 @@ export async function youtubeSummary(brand: BrandId): Promise<YoutubeSummary> {
   const channelId = process.env[`${prefix}_YOUTUBE_CHANNEL_ID`];
   if (!refresh || !channelId) return { ok: false, reason: "자격증명 없음" };
   try {
-    const token = await googleAccessToken(refresh);
-    if (!token) return { ok: false, reason: "토큰 갱신 실패 — 동의를 다시 받아 refresh token을 교체하세요" };
+    const t = await googleToken(refresh);
+    if (!t.ok) {
+      logFailure("youtube", brand, `token ${t.error}`);
+      return { ok: false, reason: tokenFailureReason(t.error, `${prefix}_YOUTUBE_REFRESH_TOKEN`) };
+    }
+    const token = t.token;
 
     const ch = await get<{
       items?: {

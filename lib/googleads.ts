@@ -2,6 +2,7 @@
 // 개발자 토큰이 승인되기 전에는 '연결 필요'/오류 문구만 보이고, 승인되면 그대로 동작한다.
 import { googleAccessToken } from "@/lib/google";
 import { BRANDS, type BrandId } from "@/lib/platforms";
+import { yesterdayDate } from "@/lib/revenue";
 
 export type AdsDay = { date: string; clicks: number; cost: number; impressions: number };
 export type AdsCampaign = { name: string; clicks: number; cost: number; impressions: number };
@@ -16,6 +17,16 @@ type AdsRow = {
   metrics?: { clicks?: string; costMicros?: string; impressions?: string };
 };
 type AdsResp = { results?: AdsRow[]; error?: { message?: string; details?: { errors?: { errorCode?: Record<string, string> }[] }[] } };
+
+// 활동이 없는 날은 행이 오지 않으므로, 어제까지 14일을 0으로 채워 날짜 기준으로 자를 수 있게 한다.
+function fillDays(rows: AdsDay[]): AdsDay[] {
+  const by = new Map(rows.map((d) => [d.date, d]));
+  const end = new Date(`${yesterdayDate()}T00:00:00Z`).getTime();
+  return Array.from({ length: 14 }, (_, i) => {
+    const date = new Date(end - (13 - i) * 86400000).toISOString().slice(0, 10);
+    return by.get(date) ?? { date, clicks: 0, cost: 0, impressions: 0 };
+  });
+}
 
 const digits = (s: string | undefined) => (s ?? "").replace(/\D/g, "");
 const metric = (r: AdsRow) => ({
@@ -69,7 +80,7 @@ export async function googleAdsSummary(brand: BrandId): Promise<GoogleAdsSummary
       return { ok: false, reason: "조회 실패 — 고객 ID와 권한을 확인하세요" };
     }
     const info = ((await infoRes.json()) as AdsResp).results?.[0]?.customer;
-    const days = (((await dayRes.json()) as AdsResp).results ?? []).map((r) => ({ date: r.segments?.date ?? "", ...metric(r) })).filter((d) => d.date);
+    const days = fillDays((((await dayRes.json()) as AdsResp).results ?? []).map((r) => ({ date: r.segments?.date ?? "", ...metric(r) })).filter((d) => d.date));
     const campaigns = campRes.ok
       ? (((await campRes.json()) as AdsResp).results ?? []).map((r) => ({ name: r.campaign?.name ?? "(이름 없음)", ...metric(r) }))
       : [];

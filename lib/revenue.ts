@@ -10,8 +10,19 @@ const DAY = 86400000;
 const ZERO_DECIMAL = new Set(["KRW", "JPY", "VND", "CLP", "ISK", "UGX", "XAF", "XOF"]);
 
 // GA 'yesterday' 기준과 맞추기 위해 [오늘 0시-7일, 오늘 0시) 구간을 쓴다. 날짜 경계는 DASHBOARD_UTC_OFFSET_HOURS(기본 9).
-export function revenueWindow(now = Date.now(), offsetHours = Number(process.env.DASHBOARD_UTC_OFFSET_HOURS ?? 9)) {
-  const off = (Number.isFinite(offsetHours) ? offsetHours : 9) * 3600000;
+const offsetMs = () => {
+  const h = Number(process.env.DASHBOARD_UTC_OFFSET_HOURS ?? 9);
+  return (Number.isFinite(h) ? h : 9) * 3600000;
+};
+
+// 어제 날짜(YYYY-MM-DD, 날짜 경계 시간대 기준). 광고 일별 데이터의 끝 날짜로 쓴다.
+export function yesterdayDate(now = Date.now()): string {
+  const today = Math.floor((now + offsetMs()) / DAY) * DAY;
+  return new Date(today - DAY).toISOString().slice(0, 10);
+}
+
+export function revenueWindow(now = Date.now(), offsetHours?: number) {
+  const off = offsetHours === undefined ? offsetMs() : (Number.isFinite(offsetHours) ? offsetHours : 9) * 3600000;
   const today = Math.floor((now + off) / DAY) * DAY - off;
   return { since: new Date(today - 7 * DAY), until: new Date(today) };
 }

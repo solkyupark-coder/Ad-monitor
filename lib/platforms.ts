@@ -117,6 +117,8 @@ export function statusFor(brand: BrandId, env: NodeJS.ProcessEnv = process.env):
 export const OPTIONAL_ENV = [
   "{BRAND}_META_BUSINESS_ID", // 비즈니스 포트폴리오 ID — 그 아래 광고 계정(인스타 프로모션 전용 계정 포함)을 자동으로 찾는다(business_management 권한)
   "{BRAND}_META_EXTRA_AD_ACCOUNT_IDS", // 추가로 읽을 광고 계정 ID(쉼표 구분, 숫자 또는 act_숫자)
+  "REFERRER_BLOCKLIST", // 리워드·클릭팜(PTC) 유입 차단 도메인을 더 추가(쉼표 구분, 두 브랜드 공통). 기본 목록은 lib/blocklist.ts
+  "{BRAND}_REFERRER_BLOCKLIST", // 위와 같은 용도, 그 브랜드만
   "GOOGLE_ADS_LOGIN_CUSTOMER_ID", // 관리자(MCC) 계정으로 접근할 때만
   "GOOGLE_ADS_API_VERSION", // 기본 v25. 구버전은 정해진 날짜에 종료된다
   "DASHBOARD_UTC_OFFSET_HOURS", // 실매출 날짜 경계. 기본 9(한국)

@@ -114,6 +114,7 @@ export function demoGa4(r: DateRange): Ga4Summary {
     geoCur: scale(geo, k),
     geoPrev: scale(geo, k * 0.85),
     geoTruncated: false,
+    blocked: { sessions: Math.round(310 * k), users: Math.round(240 * k) },
     campaigns: campaigns.map((c) => ({ ...c, sessions: Math.round(c.sessions * k), engagedSessions: Math.round(c.engagedSessions * k), engagementSec: c.engagementSec * k })),
   });
 }
@@ -162,6 +163,7 @@ export function demoVercel(r: DateRange): VercelSummary {
       pages: [t("/", 210), t("/pricing", 64), t("/gallery", 41), t("/checkout", 9)],
       referrers: [t("", 150), t("instagram.com", 60), t("google.com", 44), t("facebook.com", 21)],
       countries: [t("KR", 170), t("US", 70), t("JP", 18)],
+      blocked: { visitors: Math.round((96 * r.days) / 7), pageviews: Math.round((230 * r.days) / 7), hosts: ["cashlee.co", "ad2click.co"], dailyApplied: true },
     },
   };
 }

@@ -83,6 +83,15 @@ Business Suite·인스타그램 앱의 "게시물 홍보"는 Ads Manager 대표 
 - 비밀이 아닌 ID 메모: 토포제네시스 Ads Manager `act_1087646437400340`, 비즈니스 `4491957361125359` / 하우스케이퍼 비즈니스 `1855343032512902`, 광고 계정 `act_567801815128070`.
 - 프로모션 판별: 대표 계정이 아닌 계정의 캠페인 전부, 그리고 대표 계정에서도 이름이 "Instagram post…/부스트/홍보" 같은 패턴인 캠페인에 "프로모션" 표시가 붙는다. 상태는 `effective_status`.
 
+## 리워드·클릭팜(PTC) 유입 제외 (`lib/blocklist.ts`)
+
+cashlee.co, ad2click.co 같은 "클릭하면 돈 주는" 사이트에서 오는 유입은 사람이 아니라 대시보드를 오염시키므로, 공유 차단 목록으로 뺀다. 두 브랜드가 같은 목록을 쓴다.
+
+- **GA4**: 합계·소스/매체·지역·캠페인 요청 모두에서 `sessionSource`가 목록 도메인(하위 도메인 포함)인 세션을 요청 단계에서 뺀다. 그래서 세션·사용자·참여율·광고 효과 판정이 서로 어긋나지 않는다. 얼마나 뺐는지는 GA4 카드 위에 "세션·사용자 제외"로 보인다.
+- **Vercel**: "유입 사이트" 목록에서 빼고, 그 방문을 일별 방문자·페이지뷰에서도 뺀다. 제외량은 유입 사이트 아래에 보인다. 일별 차감 조회가 실패하면 "일별 방문자에는 반영하지 못함"이라고 표시한다.
+- **확장**: 기본 목록(`DEFAULT_BLOCKED_REFERRERS`)에 도메인을 추가하거나, 코드 수정 없이 env로 더한다 — `REFERRER_BLOCKLIST=a.com,b.net`(공통), `HOUSCAPER_REFERRER_BLOCKLIST` / `TOPOGENESIS_REFERRER_BLOCKLIST`(브랜드별). 도메인만 적는다(`https://`·`www.` 는 알아서 정리, `notcashlee.co`처럼 이름만 비슷한 도메인은 걸리지 않음).
+- **한계**: 리퍼러를 숨기는 PTC 트래픽(소스가 `(direct)`로 찍힘)은 도메인으로 가려낼 수 없다. 그런 경우는 기존 "의심 트래픽"(데이터센터 도시·참여 5초 미만) 판정이 따로 걸러 준다. Vercel 일별 차감은 선택 기간 상위 100개 유입 도메인 안에서만 찾는다.
+
 ## 레딧 refresh token 발급 (`/api/reddit/connect`)
 1. `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `{브랜드}_REDDIT_AD_ACCOUNT_ID`가 있고 refresh token만 없으면 레딧 카드에 "레딧 연결하기" 버튼이 보인다.
 2. **`https://ad-monitor-eight.vercel.app`에 로그인한 상태에서** 누른다. 레딧 앱의 redirect URI가 이 주소(루트)여야 한다. 다른 주소로 접속하면 redirect가 달라져 레딧이 거절한다(`REDDIT_REDIRECT_URI`로 고정 가능).

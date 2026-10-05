@@ -38,6 +38,11 @@ export function Ga4Panel({ g, range }: { g: Ga4Summary; range: DateRange }) {
         <h2>웹사이트 (GA4)</h2>
         <p className="meta">{range.label} · 봇 의심 트래픽 제외</p>
       </div>
+      {g.blocked && (g.blocked.sessions > 0 || g.blocked.users > 0) && (
+        <p className="fine">
+          리워드·클릭팜(PTC) 유입은 모든 수치에서 뺐습니다 — 세션 {n(g.blocked.sessions)} · 사용자 {n(g.blocked.users)}명 제외
+        </p>
+      )}
       <div className="kpis">
         <Stat label="실사용자" value={`${n(real.activeUsers)}명`} hero>
           <Delta cur={real.activeUsers} prev={realPrev.activeUsers} goodWhen="up" />
@@ -461,6 +466,12 @@ export function VercelPanel({ v, ga, range }: { v: VercelSummary; ga: Ga4Summary
             <div>
               <h3>유입 사이트</h3>
               {a.referrers.length ? <BarList color="s1" items={topItems(a.referrers, "r")} /> : <p className="note">데이터 없음</p>}
+              {a.blocked && (
+                <p className="fine">
+                  리워드·클릭팜(PTC) 유입 {a.blocked.hosts.length}곳 제외 — 방문자 {n(a.blocked.visitors)}명 · 페이지뷰 {n(a.blocked.pageviews)}
+                  {a.blocked.dailyApplied ? "(일별 방문자에서도 뺌)" : " (일별 방문자에는 반영하지 못함)"}
+                </p>
+              )}
             </div>
             <div>
               <h3>국가</h3>

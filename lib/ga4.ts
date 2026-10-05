@@ -3,6 +3,7 @@ import { googleToken, logFailure, tokenFailureReason } from "@/lib/google";
 import { BRANDS, type BrandId } from "@/lib/platforms";
 import type { DateRange } from "@/lib/range";
 import type { GaCampaignRow } from "@/lib/effect";
+import { blockedReferrers, ga4SourceRegex, isBlockedSource } from "@/lib/blocklist";
 import { DATACENTER_CITIES, excludeSuspect, splitTraffic, flagSources, type FlaggedGeo, type FlaggedSource, type GeoRow, type SourceRow, type Totals, type TrafficSplit } from "@/lib/traffic";
 
 export type Ga4Totals = {
@@ -31,6 +32,7 @@ export type Ga4Summary =
       geoTruncated: boolean;
       campaigns: GaCampaignRow[] | null; // 캠페인×소스/매체 유입(데이터센터 도시 제외). 못 읽으면 null
       campaignsTruncated: boolean; // 행이 많아 일부만 읽음
+      blocked: { sessions: number; users: number } | null; // 리워드·클릭팜(PTC) 유입으로 보고 위 모든 수치에서 뺀 양. 못 읽으면 null
     }
   | { ok: false; reason: string };
 
@@ -73,6 +75,7 @@ export function assembleGa4(input: {
   geoTruncated: boolean;
   campaigns?: GaCampaignRow[] | null;
   campaignsTruncated?: boolean;
+  blocked?: { sessions: number; users: number } | null;
 }): Ga4Summary {
   const sCur = splitTraffic(input.geoCur, input.total.activeUsers, input.total.sessions);
   const sPrev = splitTraffic(input.geoPrev, input.totalPrev.activeUsers, input.totalPrev.sessions);
@@ -90,6 +93,7 @@ export function assembleGa4(input: {
     geoTruncated: input.geoTruncated,
     campaigns: input.campaigns ?? null,
     campaignsTruncated: input.campaignsTruncated ?? false,
+    blocked: input.blocked ?? null,
   };
 }
 
@@ -107,6 +111,10 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
       return { ok: false, reason: tokenFailureReason(t.error, "GA_REFRESH_TOKEN") };
     }
     const token = t.token;
+    // 리워드·클릭팜(PTC) 유입은 요청 단계에서 빼서 합계·소스·지역·캠페인 수치가 서로 어긋나지 않게 한다.
+    const blockList = blockedReferrers(prefix);
+    const ptcFilter = { filter: { fieldName: "sessionSource", stringFilter: { matchType: "FULL_REGEXP", value: ga4SourceRegex(blockList), caseSensitive: false } } };
+    const notPtc = { notExpression: ptcFilter };
     const run = (body: object) =>
       fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`, {
         method: "POST",
@@ -119,6 +127,7 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
         dateRanges: [range],
         dimensions: [{ name: "country" }, { name: "city" }],
         metrics: ["activeUsers", "sessions", "userEngagementDuration", "ecommercePurchases", "purchaseRevenue", "engagedSessions"].map((name) => ({ name })),
+        dimensionFilter: notPtc,
         orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
         limit: GEO_LIMIT,
       });
@@ -127,25 +136,34 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
       dateRanges: [rCur],
       dimensions: [{ name: "sessionCampaignName" }, { name: "sessionSourceMedium" }],
       metrics: ["sessions", "engagedSessions", "userEngagementDuration"].map((name) => ({ name })),
-      dimensionFilter: { notExpression: { filter: { fieldName: "city", inListFilter: { values: DATACENTER_CITIES } } } },
+      dimensionFilter: { andGroup: { expressions: [{ notExpression: { filter: { fieldName: "city", inListFilter: { values: DATACENTER_CITIES } } } }, notPtc] } },
       orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
       limit: CAMPAIGN_LIMIT,
     });
-    const [ov, src, geo, geoPrev, camp] = await Promise.all([
+    // 얼마나 뺐는지 보여 주기 위한 별도 조회(실패해도 나머지 카드는 그대로).
+    const ptcReport = run({
+      dateRanges: [rCur],
+      metrics: ["sessions", "activeUsers"].map((name) => ({ name })),
+      dimensionFilter: ptcFilter,
+    });
+    const [ov, src, geo, geoPrev, camp, ptc] = await Promise.all([
       run({
         dateRanges: [rCur, rPrev],
+        dimensionFilter: notPtc,
         metrics: ["activeUsers", "sessions", "engagedSessions", "userEngagementDuration", "ecommercePurchases", "purchaseRevenue"].map((name) => ({ name })),
       }),
       run({
         dateRanges: [rCur],
         dimensions: [{ name: "sessionSourceMedium" }],
         metrics: ["sessions", "activeUsers", "engagedSessions", "userEngagementDuration"].map((name) => ({ name })),
+        dimensionFilter: notPtc,
         orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
         limit: 25,
       }),
       geoReport(rCur),
       geoReport(rPrev),
       campaignReport,
+      ptcReport,
     ]);
     const bad = [ov, src, geo, geoPrev].find((r) => !r.ok);
     if (bad) {
@@ -171,7 +189,7 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
     const total = totalsOf(byRange("date_range_0"));
     const totalPrev = totalsOf(byRange("date_range_1"));
 
-    const sources: SourceRow[] = (((await src.json()) as GaResp).rows ?? []).map((r) => ({
+    const sources: SourceRow[] = (((await src.json()) as GaResp).rows ?? []).filter((r) => !isBlockedSource(r.dimensionValues?.[0]?.value ?? "", blockList)).map((r) => ({
       sourceMedium: r.dimensionValues?.[0]?.value ?? "(알 수 없음)",
       sessions: num(r, 0),
       activeUsers: num(r, 1),
@@ -207,6 +225,13 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
     } else {
       logFailure("ga4", brand, `campaign report ${camp.status}`); // 효과 판정만 빠지고 나머지 카드는 그대로
     }
+    let blocked: { sessions: number; users: number } | null = null;
+    if (ptc.ok) {
+      const row = ((await ptc.json()) as GaResp).rows?.[0];
+      blocked = { sessions: row ? num(row, 0) : 0, users: row ? num(row, 1) : 0 };
+    } else {
+      logFailure("ga4", brand, `ptc report ${ptc.status}`);
+    }
     return assembleGa4({
       currency: ovJson.metadata?.currencyCode ?? "",
       total,
@@ -217,6 +242,7 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
       geoTruncated: [geoJson, geoPrevJson].some((j) => (j.rowCount ?? j.rows?.length ?? 0) > GEO_LIMIT),
       campaigns,
       campaignsTruncated,
+      blocked,
     });
   } catch (e) {
     logFailure("ga4", brand, `network ${e instanceof Error ? e.message : String(e)}`);

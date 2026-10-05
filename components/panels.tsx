@@ -22,58 +22,34 @@ function ErrorPanel({ title, reason }: { title: string; reason: string }) {
 
 export function Ga4Panel({ g }: { g: Ga4Summary }) {
   if (!g.ok) return <ErrorPanel title="웹사이트 (GA4)" reason={g.reason} />;
-  const { d7, d28, split } = g;
-  const countries = byCountry(g.geo).slice(0, 10);
-  const suspectByCountry = new Map<string, number>();
-  for (const r of g.geo) if (r.flag) suspectByCountry.set(r.country, (suspectByCountry.get(r.country) ?? 0) + r.sessions);
-  const cities = g.geo.slice(0, 15);
+  const { real7, real28, split } = g;
+  // 기본 화면은 의심 트래픽(데이터센터 도시·참여 5초 미만)을 뺀 실수치만 보여 준다.
+  const clean = g.geo.filter((r) => !r.flag);
+  const countries = byCountry(clean).slice(0, 10);
+  const cities = clean.slice(0, 15);
+  const sources = g.sources.filter((s) => !s.lowEngagement).slice(0, 10);
+  const suspectCities = g.geo.filter((r) => r.flag).slice(0, 15);
+  const suspectSources = g.sources.filter((s) => s.lowEngagement);
   return (
     <section className="panel">
       <div className="panel-head">
         <h2>웹사이트 (GA4)</h2>
-        <p className="meta">최근 7일 (어제까지) · 28일은 비교용</p>
+        <p className="meta">최근 7일 (어제까지) · 봇 의심 트래픽 제외</p>
       </div>
       <div className="kpis">
-        <Stat label="실사용자 추정 (7일)" value={`약 ${n(split.realUsers)}명`} hero>
-          <Sub>
-            활성 사용자 {n(split.totalUsers)}명 − 의심 {n(split.suspectUsers)}명
-          </Sub>
+        <Stat label="실사용자 (7일)" value={`${n(real7.activeUsers)}명`} hero>
+          <Sub>28일 {n(real28.activeUsers)}명</Sub>
         </Stat>
-        <Stat label="활성 사용자 (7일)" value={d7.activeUsers} kind="count">
-          <Sub>28일 {n(d28.activeUsers)}</Sub>
+        <Stat label="세션 (7일)" value={real7.sessions} kind="count">
+          <Sub>28일 {n(real28.sessions)}</Sub>
         </Stat>
-        <Stat label="세션 (7일)" value={d7.sessions} kind="count">
-          <Sub>28일 {n(d28.sessions)}</Sub>
+        <Stat label="참여율 (7일)" value={pct(real7.engagementRate)}>
+          <Sub>28일 {pct(real28.engagementRate)}</Sub>
         </Stat>
-        <Stat label="참여율 (7일)" value={pct(d7.engagementRate)}>
-          <Sub>28일 {pct(d28.engagementRate)}</Sub>
-        </Stat>
-        <Stat label="세션당 참여시간 (7일)" value={sec(d7.avgEngagementSec)}>
-          <Sub>28일 {sec(d28.avgEngagementSec)}</Sub>
-        </Stat>
-        <Stat label="의심 트래픽 (세션 기준)" value={pct(split.suspectShare)}>
-          <Sub>{n(split.suspectSessions)} / {n(split.totalSessions)} 세션</Sub>
+        <Stat label="세션당 참여시간 (7일)" value={sec(real7.avgEngagementSec)}>
+          <Sub>28일 {sec(real28.avgEngagementSec)}</Sub>
         </Stat>
       </div>
-
-      {split.suspectUsers > 0 && (
-        <div className="alert warn" role="status">
-          <strong>⚠ 의심 트래픽 {n(split.suspectUsers)}명 (세션의 {pct(split.suspectShare)})</strong>
-          <ul>
-            {split.datacenterUsers > 0 && <li>데이터센터 도시 {n(split.datacenterUsers)}명 (구매 {n(split.datacenterPurchases)}건 포함)</li>}
-            {split.lowEngagementUsers > 0 && (
-              <li>
-                세션당 참여 {LOW_ENGAGEMENT_SEC}초 미만 국가 {n(split.lowEngagementUsers)}명 (
-                {split.suspectCountries.map((c) => c.country).join(", ")})
-              </li>
-            )}
-          </ul>
-          <p className="fine">
-            판정 기준: 데이터센터 도시 목록에 있거나, 표본 5세션 이상인데 평균 참여시간이 {LOW_ENGAGEMENT_SEC}초 미만인 국가. 휴리스틱이라 실사용자가 섞일 수 있습니다.
-            {g.geoTruncated ? " 지역 행이 250개를 넘어 일부는 집계에서 빠졌습니다." : ""}
-          </p>
-        </div>
-      )}
 
       <h3>소스/매체 상위 10 (7일)</h3>
       <div className="scroll">
@@ -88,11 +64,10 @@ export function Ga4Panel({ g }: { g: Ga4Summary }) {
             </tr>
           </thead>
           <tbody>
-            {g.sources.slice(0, 10).map((s) => (
-              <tr key={s.sourceMedium} className={s.lowEngagement ? "flag" : ""}>
+            {sources.map((s) => (
+              <tr key={s.sourceMedium}>
                 <td className="name" title={s.sourceMedium}>
                   {s.sourceMedium}
-                  {s.lowEngagement && <span className="badge bad">참여 {LOW_ENGAGEMENT_SEC}초 미만</span>}
                 </td>
                 <td className="num">{n(s.sessions)}</td>
                 <td className="num">{n(s.activeUsers)}</td>
@@ -112,18 +87,18 @@ export function Ga4Panel({ g }: { g: Ga4Summary }) {
               <thead>
                 <tr>
                   <th>국가</th>
+                  <th className="num">사용자</th>
                   <th className="num">세션</th>
                   <th className="num">참여시간</th>
-                  <th className="num">의심 비율</th>
                 </tr>
               </thead>
               <tbody>
                 {countries.map((c) => (
-                  <tr key={c.country} className={c.lowEngagement ? "flag" : ""}>
+                  <tr key={c.country}>
                     <td>{c.country}</td>
+                    <td className="num">{n(c.activeUsers)}</td>
                     <td className="num">{n(c.sessions)}</td>
                     <td className="num">{sec(c.sessions ? c.engagementSec / c.sessions : 0)}</td>
-                    <td className="num">{c.sessions ? pct((suspectByCountry.get(c.country) ?? 0) / c.sessions) : "-"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -143,11 +118,9 @@ export function Ga4Panel({ g }: { g: Ga4Summary }) {
               </thead>
               <tbody>
                 {cities.map((c) => (
-                  <tr key={`${c.country}/${c.city}`} className={c.flag ? "flag" : ""}>
+                  <tr key={`${c.country}/${c.city}`}>
                     <td className="name" title={`${c.city}, ${c.country}`}>
                       {c.city}
-                      {c.flag === "datacenter" && <span className="badge bad">데이터센터</span>}
-                      {c.flag === "low-engagement" && <span className="badge bad">참여 {LOW_ENGAGEMENT_SEC}초 미만</span>}
                     </td>
                     <td className="num">{n(c.sessions)}</td>
                     <td className="num">{sec(c.sessions ? c.engagementSec / c.sessions : 0)}</td>
@@ -158,6 +131,63 @@ export function Ga4Panel({ g }: { g: Ga4Summary }) {
           </div>
         </div>
       </div>
+
+      {(split.suspectUsers > 0 || suspectSources.length > 0) && (
+        <details className="excluded">
+          <summary>
+            제외된 의심 트래픽 보기 · 7일 사용자 {n(split.suspectUsers)}명, 세션의 {pct(split.suspectShare)}
+          </summary>
+          <p className="fine">
+            데이터센터 도시이거나, 표본 5세션 이상인데 세션당 참여시간이 {LOW_ENGAGEMENT_SEC}초 미만인 국가·소스는 위 수치에서 뺐습니다.
+            휴리스틱이라 실사용자가 섞일 수 있습니다.{g.geoTruncated ? " 지역 행이 250개를 넘어 일부는 판정에서 빠졌습니다." : ""}
+          </p>
+          <ul className="fine">
+            <li>
+              전체(의심 포함) 활성 사용자 {n(g.d7.activeUsers)}명 · 세션 {n(g.d7.sessions)} · 28일 {n(g.d28.activeUsers)}명
+            </li>
+            {split.datacenterUsers > 0 && <li>데이터센터 도시 {n(split.datacenterUsers)}명</li>}
+            {split.lowEngagementUsers > 0 && (
+              <li>
+                참여 {LOW_ENGAGEMENT_SEC}초 미만 국가 {n(split.lowEngagementUsers)}명 ({split.suspectCountries.map((c) => c.country).join(", ")})
+              </li>
+            )}
+            {split.suspectPurchases > 0 && <li>의심 트래픽에서 찍힌 GA 구매 {n(split.suspectPurchases)}건 (매출 비교에서도 제외)</li>}
+            {suspectSources.length > 0 && (
+              <li>
+                참여 {LOW_ENGAGEMENT_SEC}초 미만 소스: {suspectSources.map((s) => `${s.sourceMedium} (${n(s.sessions)}세션, ${sec(s.sessions ? s.engagementSec / s.sessions : 0)})`).join(", ")}
+              </li>
+            )}
+          </ul>
+          {suspectCities.length > 0 && (
+            <div className="scroll">
+              <table className="data">
+                <thead>
+                  <tr>
+                    <th>제외된 도시</th>
+                    <th>사유</th>
+                    <th className="num">사용자</th>
+                    <th className="num">세션</th>
+                    <th className="num">참여시간</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {suspectCities.map((c) => (
+                    <tr key={`${c.country}/${c.city}`}>
+                      <td className="name" title={`${c.city}, ${c.country}`}>
+                        {c.city}, {c.country}
+                      </td>
+                      <td>{c.flag === "datacenter" ? "데이터센터" : `참여 ${LOW_ENGAGEMENT_SEC}초 미만`}</td>
+                      <td className="num">{n(c.activeUsers)}</td>
+                      <td className="num">{n(c.sessions)}</td>
+                      <td className="num">{sec(c.sessions ? c.engagementSec / c.sessions : 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </details>
+      )}
     </section>
   );
 }
@@ -166,7 +196,7 @@ export function RevenuePanel({ real, ga }: { real: RevenueSummary; ga: Ga4Summar
   const gaOk = ga && ga.ok ? ga : null;
   const cmp = gaOk
     ? compareRevenue(
-        { purchases: gaOk.d7.purchases, revenue: gaOk.d7.revenue, currency: gaOk.currency, datacenterPurchases: gaOk.split.datacenterPurchases },
+        { purchases: gaOk.real7.purchases, revenue: gaOk.real7.revenue, currency: gaOk.currency, datacenterPurchases: 0 },
         real.ok ? { orders: real.orders, amount: real.amount, currency: real.currency } : null,
       )
     : null;
@@ -184,10 +214,10 @@ export function RevenuePanel({ real, ga }: { real: RevenueSummary; ga: Ga4Summar
           <Stat label="실제 매출" value={real.amount === null ? "집계 안 함" : fmtValue(real.amount, "won", real.currency)} />
           {gaOk && (
             <>
-              <Stat label="GA purchase 건수" value={gaOk.d7.purchases} kind="count">
-                <Sub>매출 근거로 쓰지 않음</Sub>
+              <Stat label="GA purchase 건수" value={gaOk.real7.purchases} kind="count">
+                <Sub>봇 의심 제외 · 매출 근거로 쓰지 않음</Sub>
               </Stat>
-              <Stat label="GA purchase 값" value={fmtValue(gaOk.d7.revenue, "won", gaOk.currency || "KRW")} />
+              <Stat label="GA purchase 값" value={fmtValue(gaOk.real7.revenue, "won", gaOk.currency || "KRW")} />
             </>
           )}
         </div>
@@ -203,6 +233,9 @@ export function RevenuePanel({ real, ga }: { real: RevenueSummary; ga: Ga4Summar
       )}
       {cmp && cmp.level === "ok" && <p className="ok-line">✓ {cmp.message}</p>}
       {cmp && cmp.level === "none" && <p className="fine">{cmp.message}</p>}
+      {gaOk && gaOk.split.suspectPurchases > 0 && (
+        <p className="fine">봇 의심 트래픽에서 찍힌 GA 구매 {n(gaOk.split.suspectPurchases)}건은 위 수치와 비교에서 뺐습니다.</p>
+      )}
     </section>
   );
 }

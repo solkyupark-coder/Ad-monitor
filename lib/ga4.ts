@@ -1,12 +1,13 @@
 // GA4 Data API 읽기 전용 조회(scope: analytics.readonly). 토큰 값은 화면·로그에 내지 않는다.
 import { googleToken, logFailure, tokenFailureReason } from "@/lib/google";
 import { BRANDS, type BrandId } from "@/lib/platforms";
-import { splitTraffic, flagSources, type FlaggedGeo, type FlaggedSource, type GeoRow, type SourceRow, type TrafficSplit } from "@/lib/traffic";
+import { excludeSuspect, splitTraffic, flagSources, type FlaggedGeo, type FlaggedSource, type GeoRow, type SourceRow, type Totals, type TrafficSplit } from "@/lib/traffic";
 
 export type Ga4Totals = {
   activeUsers: number;
   sessions: number;
   engagedSessions: number;
+  engagementSec: number; // 참여시간 합계(초)
   engagementRate: number; // 참여 세션 / 세션
   avgEngagementSec: number; // 세션당 평균 참여시간
   purchases: number;
@@ -17,11 +18,14 @@ export type Ga4Summary =
   | {
       ok: true;
       currency: string;
-      d7: Ga4Totals;
+      d7: Ga4Totals; // 전체(의심 포함)
       d28: Ga4Totals;
-      sources: FlaggedSource[]; // 세션 순 상위(최대 25), 화면에는 10개
-      geo: FlaggedGeo[];
+      real7: Ga4Totals; // 의심 트래픽을 뺀 실수치 — 화면 기본값
+      real28: Ga4Totals;
+      sources: FlaggedSource[]; // 세션 순 상위(최대 25), 화면에는 의심 아닌 것 10개
+      geo: FlaggedGeo[]; // 7일
       split: TrafficSplit; // 7일 기준 의심 트래픽 분리
+      split28: TrafficSplit;
       geoTruncated: boolean;
     }
   | { ok: false; reason: string };
@@ -35,18 +39,50 @@ const GEO_LIMIT = 250;
 
 const num = (r: GaRow, i: number) => Number(r.metricValues?.[i]?.value ?? 0);
 
-function totalsOf(r: GaRow | undefined): Ga4Totals {
-  if (!r) return { activeUsers: 0, sessions: 0, engagedSessions: 0, engagementRate: 0, avgEngagementSec: 0, purchases: 0, revenue: 0 };
-  const sessions = num(r, 1);
-  const engaged = num(r, 2);
+export function withRates(t: Totals): Ga4Totals {
   return {
+    ...t,
+    engagementRate: t.sessions ? t.engagedSessions / t.sessions : 0,
+    avgEngagementSec: t.sessions ? t.engagementSec / t.sessions : 0,
+  };
+}
+
+function totalsOf(r: GaRow | undefined): Ga4Totals {
+  if (!r) return withRates({ activeUsers: 0, sessions: 0, engagedSessions: 0, engagementSec: 0, purchases: 0, revenue: 0 });
+  return withRates({
     activeUsers: num(r, 0),
-    sessions,
-    engagedSessions: engaged,
-    engagementRate: sessions ? engaged / sessions : 0,
-    avgEngagementSec: sessions ? num(r, 3) / sessions : 0,
+    sessions: num(r, 1),
+    engagedSessions: num(r, 2),
+    engagementSec: num(r, 3),
     purchases: num(r, 4),
     revenue: num(r, 5),
+  });
+}
+
+// 조회 결과를 화면용 요약으로 묶는다(데모 데이터도 같은 경로를 쓴다).
+export function assembleGa4(input: {
+  currency: string;
+  d7: Ga4Totals;
+  d28: Ga4Totals;
+  sources: SourceRow[];
+  geo7: GeoRow[];
+  geo28: GeoRow[];
+  geoTruncated: boolean;
+}): Ga4Summary {
+  const s7 = splitTraffic(input.geo7, input.d7.activeUsers, input.d7.sessions);
+  const s28 = splitTraffic(input.geo28, input.d28.activeUsers, input.d28.sessions);
+  return {
+    ok: true,
+    currency: input.currency,
+    d7: input.d7,
+    d28: input.d28,
+    real7: withRates(excludeSuspect(input.d7, s7.split)),
+    real28: withRates(excludeSuspect(input.d28, s28.split)),
+    sources: flagSources(input.sources),
+    geo: s7.flagged,
+    split: s7.split,
+    split28: s28.split,
+    geoTruncated: input.geoTruncated,
   };
 }
 
@@ -69,7 +105,15 @@ export async function ga4Summary(brand: BrandId): Promise<Ga4Summary> {
         body: JSON.stringify(body),
         next: { revalidate: 600 }, // 쿼터 절약: 10분 캐시
       });
-    const [ov, src, geo] = await Promise.all([
+    const geoReport = (range: object) =>
+      run({
+        dateRanges: [range],
+        dimensions: [{ name: "country" }, { name: "city" }],
+        metrics: ["activeUsers", "sessions", "userEngagementDuration", "ecommercePurchases", "purchaseRevenue", "engagedSessions"].map((name) => ({ name })),
+        orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
+        limit: GEO_LIMIT,
+      });
+    const [ov, src, geo, geo28] = await Promise.all([
       run({
         dateRanges: [RANGE_7, RANGE_28],
         metrics: ["activeUsers", "sessions", "engagedSessions", "userEngagementDuration", "ecommercePurchases", "purchaseRevenue"].map((name) => ({ name })),
@@ -81,15 +125,10 @@ export async function ga4Summary(brand: BrandId): Promise<Ga4Summary> {
         orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
         limit: 25,
       }),
-      run({
-        dateRanges: [RANGE_7],
-        dimensions: [{ name: "country" }, { name: "city" }],
-        metrics: ["activeUsers", "sessions", "userEngagementDuration", "ecommercePurchases", "purchaseRevenue"].map((name) => ({ name })),
-        orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
-        limit: GEO_LIMIT,
-      }),
+      geoReport(RANGE_7),
+      geoReport(RANGE_28),
     ]);
-    const bad = [ov, src, geo].find((r) => !r.ok);
+    const bad = [ov, src, geo, geo28].find((r) => !r.ok);
     if (bad) {
       const err = ((await bad.json().catch(() => ({}))) as { error?: { status?: string; message?: string } }).error;
       const code = err?.status ?? `HTTP ${bad.status}`;
@@ -121,27 +160,28 @@ export async function ga4Summary(brand: BrandId): Promise<Ga4Summary> {
       engagementSec: num(r, 3),
     }));
 
+    const toGeo = (j: GaResp): GeoRow[] =>
+      (j.rows ?? []).map((r) => ({
+        country: r.dimensionValues?.[0]?.value ?? "(알 수 없음)",
+        city: r.dimensionValues?.[1]?.value ?? "(알 수 없음)",
+        activeUsers: num(r, 0),
+        sessions: num(r, 1),
+        engagementSec: num(r, 2),
+        purchases: num(r, 3),
+        revenue: num(r, 4),
+        engagedSessions: num(r, 5),
+      }));
     const geoJson = (await geo.json()) as GaResp;
-    const geoRows: GeoRow[] = (geoJson.rows ?? []).map((r) => ({
-      country: r.dimensionValues?.[0]?.value ?? "(알 수 없음)",
-      city: r.dimensionValues?.[1]?.value ?? "(알 수 없음)",
-      activeUsers: num(r, 0),
-      sessions: num(r, 1),
-      engagementSec: num(r, 2),
-      purchases: num(r, 3),
-      revenue: num(r, 4),
-    }));
-    const { flagged, split } = splitTraffic(geoRows, d7.activeUsers, d7.sessions);
-    return {
-      ok: true,
+    const geo28Json = (await geo28.json()) as GaResp;
+    return assembleGa4({
       currency: ovJson.metadata?.currencyCode ?? "",
       d7,
       d28,
-      sources: flagSources(sources),
-      geo: flagged,
-      split,
-      geoTruncated: (geoJson.rowCount ?? geoRows.length) > GEO_LIMIT,
-    };
+      sources,
+      geo7: toGeo(geoJson),
+      geo28: toGeo(geo28Json),
+      geoTruncated: [geoJson, geo28Json].some((j) => (j.rowCount ?? j.rows?.length ?? 0) > GEO_LIMIT),
+    });
   } catch (e) {
     logFailure("ga4", brand, `network ${e instanceof Error ? e.message : String(e)}`);
     return { ok: false, reason: "조회 실패(네트워크)" };

@@ -74,6 +74,9 @@ h3 { font-size: 13px; margin: 24px 0 8px; color: var(--ink2); font-weight: 600; 
 .badge.bad { color: var(--bad); }
 .data tr.flag td { background: color-mix(in srgb, var(--bad) 7%, transparent); }
 .two { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.excluded { margin-top: 20px; padding-top: 10px; border-top: 1px solid var(--grid); font-size: 13px; color: var(--ink2); }
+.excluded summary { cursor: pointer; }
+.excluded table { margin-top: 8px; }
 .pending-title { margin-top: 32px; }
 .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }

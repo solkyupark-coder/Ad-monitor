@@ -10,6 +10,7 @@ export type GeoRow = {
   city: string;
   activeUsers: number;
   sessions: number;
+  engagedSessions: number;
   engagementSec: number; // 참여시간 합계(초)
   purchases: number;
   revenue: number;
@@ -51,7 +52,10 @@ export type TrafficSplit = {
   suspectShare: number; // 세션 기준 의심 비율(0~1)
   datacenterUsers: number;
   lowEngagementUsers: number;
+  suspectEngagedSessions: number;
+  suspectEngagementSec: number;
   suspectPurchases: number;
+  suspectRevenue: number;
   datacenterPurchases: number;
   suspectCountries: CountryRow[];
 };
@@ -83,10 +87,29 @@ export function splitTraffic(rows: GeoRow[], totalUsers: number, totalSessions: 
       suspectShare: totalSessions > 0 ? suspectSessions / totalSessions : 0,
       datacenterUsers: sum((r) => r.activeUsers, "datacenter"),
       lowEngagementUsers: sum((r) => r.activeUsers, "low-engagement"),
+      suspectEngagedSessions: sum((r) => r.engagedSessions),
+      suspectEngagementSec: sum((r) => r.engagementSec),
       suspectPurchases: sum((r) => r.purchases),
+      suspectRevenue: sum((r) => r.revenue),
       datacenterPurchases: sum((r) => r.purchases, "datacenter"),
       suspectCountries: byCountry(rows.filter((r) => !isDatacenterCity(r.city))).filter((c) => c.lowEngagement),
     },
+  };
+}
+
+// 의심 트래픽을 뺀 실수치. 지역 합계가 속성 전체 값보다 클 수 있어 0 아래로는 내려가지 않게 한다.
+export type Totals = { activeUsers: number; sessions: number; engagedSessions: number; engagementSec: number; purchases: number; revenue: number };
+export function excludeSuspect(t: Totals, split: TrafficSplit): Totals {
+  const minus = (a: number, b: number) => Math.max(0, a - b);
+  const sessions = minus(t.sessions, split.suspectSessions);
+  return {
+    activeUsers: split.realUsers,
+    sessions,
+    // 지역 행이 잘리거나 합계가 어긋나도 참여 세션이 세션 수를 넘지 않게 한다(참여율 100% 초과 방지).
+    engagedSessions: Math.min(sessions, minus(t.engagedSessions, split.suspectEngagedSessions)),
+    engagementSec: minus(t.engagementSec, split.suspectEngagementSec),
+    purchases: minus(t.purchases, split.suspectPurchases),
+    revenue: minus(t.revenue, split.suspectRevenue),
   };
 }
 

@@ -2,10 +2,10 @@
   color-scheme: light;
   --plane: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
   --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.1);
-  --s1: #2a78d6; --s2: #eb6834; --good: #006300; --bad: #d03b3b; --warn: #8a5a00; --ok: #006300;
+  --s1: #2a78d6; --s2: #eb6834; --good: #006300; --bad: #c62f2f; --warn: #8a5a00; --ok: #006300;
   --shadow: 0 4px 16px rgba(11,11,11,0.12);
   --f1: #184f95; --f2: #2a78d6; --f3: #5598e7; --f4: #86b6ef; /* 퍼널 단계(청색 계열, 짙을수록 앞 단계) */
-  --bad-bg: rgba(208,59,59,0.07); --warn-bg: rgba(138,90,0,0.08); --good-bg: rgba(0,99,0,0.07);
+  --bad-bg: rgba(198,47,47,0.07); --warn-bg: rgba(138,90,0,0.08); --good-bg: rgba(0,99,0,0.07);
 }
 @media (prefers-color-scheme: dark) {
   :root {

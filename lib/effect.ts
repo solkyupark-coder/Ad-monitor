@@ -51,7 +51,7 @@ export const HIGH_CTR = 0.025;
 
 export const VERDICT_LABEL: Record<Verdict, string> = { good: "효과 있음", warn: "점검", bad: "낭비 의심", hold: "보류" };
 
-const norm = (s: string) => s.toLowerCase().replace(/[\s_\-·.]+/g, "");
+const norm = (s: string) => s.toLowerCase().replace(/[\s_\-·.()]+/g, ""); // 공백·기호·괄호는 무시("(cross-network)" = "Cross-network")
 
 // GA4 소스/매체 → 광고 채널. 유료 매체만 광고로 본다(instagram / social 같은 일반 유입은 제외).
 // 매체는 글자 덩어리로 나눠 본다("paid_social" → paid, social / "cpc" / "fb_ad" → fb, ad). 'ad'가 들어간 다른 낱말("reads")은 걸리지 않는다.
@@ -63,7 +63,8 @@ const META_MED = new Set(["paid", "cpc", "ppc", "ad", "ads", "cpm", "paidsocial"
 export function channelOf(sourceMedium: string): Channel | null {
   const [src = "", med = ""] = sourceMedium.toLowerCase().split("/").map((s) => s.trim());
   const tokens = med.split(/[^a-z]+/).filter(Boolean);
-  if (GOOGLE_SRC.test(src) && tokens.some((t) => GOOGLE_MED.has(t))) return "google";
+  // 성과 최대화·디맨드젠 등은 GA4가 "google / cross-network"로 기록한다.
+  if (GOOGLE_SRC.test(src) && (tokens.some((t) => GOOGLE_MED.has(t)) || med.replace(/[^a-z]/g, "") === "crossnetwork")) return "google";
   if (META_SRC.test(src) && tokens.some((t) => META_MED.has(t))) return "meta";
   return null;
 }

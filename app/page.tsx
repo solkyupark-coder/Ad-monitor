@@ -10,7 +10,8 @@ import { TrendChart } from "@/components/TrendChart";
 import { BarList, Delta, Stat } from "@/components/ui";
 import { AdsPanel, Ga4Panel, RevenuePanel, VercelPanel } from "@/components/panels";
 import { vercelSummary } from "@/lib/vercel";
-import { OverviewPanel } from "@/components/Overview";
+import { ActionsPanel, OverviewPanel } from "@/components/Overview";
+import { buildActions } from "@/lib/actions";
 import { buildOverview } from "@/lib/overview";
 import { parseRange, PRESETS, rangeQuery, yesterdayDate, type DateRange } from "@/lib/range";
 
@@ -203,6 +204,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Que
   });
   const connectedCount = statuses.filter((s) => isOn(s.platform.id)).length;
   const pending = statuses.filter((s) => !isOn(s.platform.id));
+  const actions = buildActions({ days: range.days, meta, ads, ga, rev, vercel: vc, youtube: yt, pending: pending.map((p) => p.platform.label), verdict: overview.verdict });
   return (
     <main>
       <header>
@@ -221,6 +223,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Que
       <RangePicker brand={brand} range={range} />
       {demo && <p className="demo">데모 데이터입니다. 실제 수치가 아닙니다.</p>}
       <OverviewPanel o={overview} range={range} />
+      <ActionsPanel items={actions} />
       {rev && <RevenuePanel real={rev} ga={ga} range={range} />}
       {ga && <Ga4Panel g={ga} range={range} />}
       {vc && <VercelPanel v={vc} ga={ga} range={range} />}

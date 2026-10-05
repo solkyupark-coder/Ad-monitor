@@ -123,3 +123,11 @@ ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; } code { font-size: 1
 .deploys { list-style: none; margin: 8px 0 0; padding: 0; font-size: 13px; }
 .deploys li { padding: 6px 0; border-bottom: 1px solid var(--grid); }
 .deploys .delta { margin-right: 4px; }
+.action-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.action-list li { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 10px; padding: 12px 0; border-top: 1px solid var(--grid); }
+.action-list li:first-child { border-top: 0; }
+.badge-level { align-self: start; text-align: center; font-size: 12px; font-weight: 700; padding: 3px 0; border-radius: 6px; border: 1px solid currentColor; }
+.badge-level.bad { color: var(--bad); } .badge-level.warn { color: var(--warn); } .badge-level.info { color: var(--ink2); } .badge-level.good { color: var(--good); }
+.action-title { margin: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.action-area { color: var(--ink2); font-weight: 500; margin-right: 2px; }
+.action-do { margin: 3px 0 0; font-size: 13px; color: var(--ink2); }

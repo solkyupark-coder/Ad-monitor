@@ -2,6 +2,7 @@ import { fmtValue } from "@/lib/format";
 import { logWidth, type Overview } from "@/lib/overview";
 import { Stat } from "@/components/ui";
 import type { DateRange } from "@/lib/range";
+import type { ActionItem } from "@/lib/actions";
 
 const n = (v: number) => fmtValue(v, "count");
 const pct = (r: number) => (r === 0 ? "0%" : r >= 0.1 ? `${(r * 100).toFixed(0)}%` : r >= 0.001 ? `${(r * 100).toFixed(1)}%` : `${(r * 100).toFixed(2)}%`);
@@ -60,6 +61,32 @@ export function OverviewPanel({ o, range }: { o: Overview; range: DateRange }) {
           </li>
         ))}
       </ol>
+    </section>
+  );
+}
+
+const LEVEL_TEXT = { bad: "긴급", warn: "확인", info: "참고", good: "양호" } as const;
+
+export function ActionsPanel({ items }: { items: ActionItem[] }) {
+  return (
+    <section className="panel actions">
+      <div className="panel-head">
+        <h2>운영 체크</h2>
+        <p className="meta">모든 소스에서 지금 손볼 것 · 심각한 순</p>
+      </div>
+      <ul className="action-list">
+        {items.map((a, i) => (
+          <li key={i} className={a.level}>
+            <span className={`badge-level ${a.level}`}>{LEVEL_TEXT[a.level]}</span>
+            <div>
+              <p className="action-title">
+                <span className="action-area">{a.area}</span> {a.title}
+              </p>
+              <p className="action-do">{a.action}</p>
+            </div>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

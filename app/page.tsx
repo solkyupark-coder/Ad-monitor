@@ -4,11 +4,12 @@ import { metaSummary, periodSplit, type MetaSummary } from "@/lib/meta";
 import { ga4Summary } from "@/lib/ga4";
 import { googleAdsSummary } from "@/lib/googleads";
 import { revenueSummary } from "@/lib/revenue";
-import { demoAds, demoGa4, demoMeta, demoOn, demoRevenue, demoYoutube } from "@/lib/demo";
+import { demoAds, demoGa4, demoMeta, demoOn, demoRevenue, demoVercel, demoYoutube } from "@/lib/demo";
 import { fmtCompact, fmtDate, fmtValue } from "@/lib/format";
 import { TrendChart } from "@/components/TrendChart";
 import { BarList, Delta, Stat } from "@/components/ui";
-import { AdsPanel, Ga4Panel, RevenuePanel } from "@/components/panels";
+import { AdsPanel, Ga4Panel, RevenuePanel, VercelPanel } from "@/components/panels";
+import { vercelSummary } from "@/lib/vercel";
 import { OverviewPanel } from "@/components/Overview";
 import { buildOverview } from "@/lib/overview";
 import { parseRange, PRESETS, rangeQuery, yesterdayDate, type DateRange } from "@/lib/range";
@@ -182,14 +183,15 @@ export default async function Home({ searchParams }: { searchParams: Promise<Que
   const range = parseRange(sp);
   const demo = demoOn();
   const statuses = statusFor(brand);
-  const DEMO_ON: PlatformId[] = ["meta", "youtube", "ga4", "revenue", "purchase_db", "google_ads"];
+  const DEMO_ON: PlatformId[] = ["meta", "youtube", "ga4", "revenue", "purchase_db", "vercel", "google_ads"];
   const isOn = (id: PlatformId) => (demo ? DEMO_ON.includes(id) : statuses.find((s) => s.platform.id === id)?.connected);
-  const [meta, yt, ga, rev, ads] = await Promise.all([
+  const [meta, yt, ga, rev, ads, vc] = await Promise.all([
     isOn("meta") ? (demo ? demoMeta(range) : metaSummary(brand, range)) : null,
     isOn("youtube") ? (demo ? demoYoutube() : youtubeSummary(brand)) : null,
     isOn("ga4") ? (demo ? demoGa4(range) : ga4Summary(brand, range)) : null,
     isOn("revenue") ? (demo ? demoRevenue(range) : revenueSummary(brand, range)) : null,
     isOn("google_ads") ? (demo ? demoAds(range) : googleAdsSummary(brand, range)) : null,
+    isOn("vercel") ? (demo ? demoVercel(range) : vercelSummary(brand, range)) : null,
   ]);
   const overview = buildOverview({
     meta: meta && meta.ok ? { days: meta.days, currency: meta.currency } : null,
@@ -221,6 +223,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Que
       <OverviewPanel o={overview} range={range} />
       {rev && <RevenuePanel real={rev} ga={ga} range={range} />}
       {ga && <Ga4Panel g={ga} range={range} />}
+      {vc && <VercelPanel v={vc} ga={ga} range={range} />}
       {meta && <MetaPanel m={meta} range={range} />}
       {ads && <AdsPanel a={ads} ga={ga} range={range} />}
       {yt && <YoutubePanel y={yt} brand={brand} />}

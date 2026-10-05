@@ -20,11 +20,15 @@
 | GA4 | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GA_REFRESH_TOKEN` | `GA4_PROPERTY_ID` | `analytics.readonly` |
 | 실매출 | — | 하우스케이퍼 `POLAR_ACCESS_TOKEN` / 토포제네시스 `TOPOGENESIS_POLAR_ACCESS_TOKEN` | Polar 조직 토큰, `orders:read` |
 | 결제 DB (Supabase purchase) | — | `SUPABASE_URL`, `SUPABASE_READONLY_KEY` | purchase 테이블 select만 허용한 읽기 전용 키 |
+| 사이트·배포 (Vercel) | `VERCEL_API_TOKEN`, `VERCEL_TEAM_ID` | `VERCEL_PROJECT_ID` | 팀 범위 토큰(읽기만 사용) |
 | 구글 광고 | `GOOGLE_ADS_REFRESH_TOKEN` (+ OAuth 클라이언트) | `GOOGLE_ADS_CUSTOMER_ID` (숫자 10자리) | `adwords` |
 | 유튜브 | OAuth 클라이언트 | `YOUTUBE_REFRESH_TOKEN`, `YOUTUBE_CHANNEL_ID` | `youtube.readonly` |
 | 메타 | — | `META_ACCESS_TOKEN`, `META_AD_ACCOUNT_ID` | `ads_read` |
 
 속성·계정 ID (비밀이 아님): GA4 속성 하우스케이퍼 `555914097` / 토포제네시스 `487961539`, 구글 광고 고객 ID 하우스케이퍼 `8556065657` / 토포제네시스 `5133039562`.
+
+Vercel 프로젝트 ID (비밀이 아님): 팀 `team_O2UwFZ4PRZM3d3laZ0qo0Q3L`, 하우스케이퍼 사이트 `prj_YujoHG1apHBdbaRBcL5ke3sd78YZ`(houscaper) / 토포제네시스 사이트 `prj_poUfsSXZeDAOxDYpdkZgwxEzvB9s`(topo-genesis-3djs).
+Vercel 토큰: vercel.com → Account Settings → Tokens → 범위를 이 팀으로, 만료일 지정. 대시보드는 배포 목록·프로젝트 정보·Web Analytics 조회(GET)만 한다. 방문자·페이지뷰는 각 사이트 프로젝트에서 **Analytics(Web Analytics)를 켜야** 보이고, 꺼져 있으면 배포 기록만 보인다.
 
 구글 광고 개발자 토큰은 2026-09-09에 종료됐다. 접근 수준(Explorer/Basic 등)은 OAuth 클라이언트가 속한 Google Cloud 프로젝트(`ferrous-arena-510513-p2`)에 붙으므로, refresh token은 반드시 이 프로젝트의 클라이언트(`GOOGLE_OAUTH_CLIENT_ID`)로 발급해야 한다.
 

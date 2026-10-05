@@ -113,3 +113,29 @@ export function demoAds(r: DateRange): GoogleAdsSummary {
     ],
   };
 }
+
+import type { VercelSummary } from "@/lib/vercel";
+export function demoVercel(r: DateRange): VercelSummary {
+  const days = demoDays(r).map((date, i) => {
+    const visitors = Math.round(40 + 14 * Math.sin(i / 1.7) + (i >= r.days ? 8 : 0));
+    return { date, visitors, pageviews: Math.round(visitors * 2.6) };
+  });
+  const t = (key: string, v: number) => ({ key, visitors: Math.round(v * r.days / 7), pageviews: Math.round(v * 2.4 * r.days / 7) });
+  const now = Date.parse(`${r.to}T12:00:00Z`);
+  return {
+    ok: true,
+    projectName: "데모 사이트",
+    deploys: [
+      { id: "d1", createdAt: new Date(now - 3 * 3600e3).toISOString(), state: "READY", message: "[데모] 가격 페이지 문구 수정" },
+      { id: "d2", createdAt: new Date(now - 30 * 3600e3).toISOString(), state: "ERROR", message: "[데모] 결제 버튼 리팩터링" },
+      { id: "d3", createdAt: new Date(now - 52 * 3600e3).toISOString(), state: "READY", message: "[데모] 랜딩 이미지 교체" },
+    ],
+    analytics: {
+      ok: true,
+      days,
+      pages: [t("/", 210), t("/pricing", 64), t("/gallery", 41), t("/checkout", 9)],
+      referrers: [t("", 150), t("instagram.com", 60), t("google.com", 44), t("facebook.com", 21)],
+      countries: [t("KR", 170), t("US", 70), t("JP", 18)],
+    },
+  };
+}

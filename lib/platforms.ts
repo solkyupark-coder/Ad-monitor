@@ -1,6 +1,6 @@
 // D1: 플랫폼별 직접 연동(Windsor 미사용). 연결 상태는 환경변수 존재 여부로만 판단한다 — 값은 절대 화면/로그에 내지 않는다.
 export type BrandId = "houscaper" | "topogenesis";
-export type PlatformId = "meta" | "google_ads" | "youtube" | "ga4" | "revenue" | "purchase_db" | "reddit" | "tiktok";
+export type PlatformId = "meta" | "google_ads" | "youtube" | "ga4" | "revenue" | "purchase_db" | "vercel" | "reddit" | "tiktok";
 
 export const BRANDS: { id: BrandId; label: string; prefix: string }[] = [
   { id: "houscaper", label: "하우스케이퍼", prefix: "HOUSCAPER" },
@@ -67,6 +67,13 @@ export const PLATFORMS: PlatformDef[] = [
     shared: [],
     perBrand: ["SUPABASE_URL", "SUPABASE_READONLY_KEY"],
     note: "브랜드 앱의 purchase 테이블(읽기 전용 키, RLS로 select만). Polar가 있으면 실매출은 Polar 기준이고 이 값은 대조용으로 함께 보이며, Polar가 없으면 이 값이 실매출이 된다.",
+  },
+  {
+    id: "vercel",
+    label: "사이트·배포 (Vercel)",
+    shared: ["VERCEL_API_TOKEN", "VERCEL_TEAM_ID"],
+    perBrand: ["VERCEL_PROJECT_ID"],
+    note: "브랜드 사이트의 프로덕션 배포 기록과 Web Analytics(방문자·페이지뷰·상위 페이지·유입·국가). 토큰은 팀 범위로 발급. Web Analytics가 꺼진 프로젝트면 배포 기록만 보인다.",
   },
   {
     id: "reddit",

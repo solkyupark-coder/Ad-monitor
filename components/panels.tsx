@@ -2,10 +2,11 @@ import type { Ga4Summary } from "@/lib/ga4";
 import type { GoogleAdsSummary } from "@/lib/googleads";
 import type { RevenueSummary } from "@/lib/revenue";
 import type { DateRange } from "@/lib/range";
+import type { VercelSummary, VercelTop } from "@/lib/vercel";
 import { adsEngagement, byCountry, compareRevenue, findGoogleCpc, LOW_ENGAGEMENT_SEC } from "@/lib/traffic";
 import { fmtCompact, fmtValue } from "@/lib/format";
 import { TrendChart } from "@/components/TrendChart";
-import { Delta, Stat } from "@/components/ui";
+import { BarList, Delta, Stat } from "@/components/ui";
 
 const pct = (r: number) => `${(r * 100).toFixed(1)}%`;
 const sec = (s: number) => (s < 10 ? `${s.toFixed(1)}초` : s < 60 ? `${Math.round(s)}초` : `${Math.floor(s / 60)}분 ${Math.round(s % 60)}초`);
@@ -372,6 +373,116 @@ export function AdsPanel({ a, ga, range }: { a: GoogleAdsSummary; ga: Ga4Summary
             </table>
           </div>
         </>
+      )}
+    </section>
+  );
+}
+
+const DEPLOY_LABEL: Record<string, { text: string; cls: string }> = {
+  READY: { text: "정상", cls: "good" },
+  ERROR: { text: "실패", cls: "bad" },
+  CANCELED: { text: "취소", cls: "flat" },
+  BUILDING: { text: "빌드 중", cls: "flat" },
+  QUEUED: { text: "대기", cls: "flat" },
+  INITIALIZING: { text: "준비 중", cls: "flat" },
+};
+const ago = (iso: string) => {
+  const m = Math.round((Date.now() - Date.parse(iso)) / 60000);
+  return m < 60 ? `${m}분 전` : m < 1440 ? `${Math.round(m / 60)}시간 전` : `${Math.round(m / 1440)}일 전`;
+};
+const topItems = (rows: VercelTop[], prefix: string) =>
+  rows.map((r) => ({ id: `${prefix}-${r.key}`, label: r.key || "(직접 방문)", value: r.visitors || r.pageviews, display: `${n(r.visitors)}명`, note: `페이지뷰 ${n(r.pageviews)}` }));
+
+// 사이트·배포(Vercel): 방문자(쿠키 없는 Vercel 집계)·페이지뷰·상위 페이지/유입/국가 + 프로덕션 배포 상태.
+export function VercelPanel({ v, ga, range }: { v: VercelSummary; ga: Ga4Summary | null; range: DateRange }) {
+  if (!v.ok) return <ErrorPanel title="사이트·배포 (Vercel)" reason={v.reason} />;
+  const last = v.deploys[0];
+  const inRange = v.deploys.filter((d) => d.createdAt.slice(0, 10) >= range.from);
+  const failed = inRange.filter((d) => d.state === "ERROR").length;
+  const a = v.analytics;
+  const cur = a.ok ? a.days.slice(-range.days) : [];
+  const prev = a.ok ? a.days.slice(0, -range.days) : [];
+  const sum = (ds: { visitors: number; pageviews: number }[], k: "visitors" | "pageviews") => ds.reduce((x, d) => x + d[k], 0);
+  const gaUsers = ga && ga.ok ? ga.real.activeUsers : null;
+  const visitors = sum(cur, "visitors");
+  const lastLabel = last ? DEPLOY_LABEL[last.state] ?? { text: last.state, cls: "flat" } : null;
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <h2>사이트·배포 (Vercel)</h2>
+        <p className="meta">
+          {v.projectName} · {range.label}
+        </p>
+      </div>
+      <div className="kpis">
+        {a.ok && (
+          <>
+            <Stat label="방문자" value={visitors} kind="count" hero>
+              <Delta cur={visitors} prev={prev.length ? sum(prev, "visitors") : null} goodWhen="up" />
+            </Stat>
+            <Stat label="페이지뷰" value={sum(cur, "pageviews")} kind="count">
+              <Delta cur={sum(cur, "pageviews")} prev={prev.length ? sum(prev, "pageviews") : null} goodWhen="up" />
+            </Stat>
+          </>
+        )}
+        <Stat label="최근 프로덕션 배포" value={lastLabel ? lastLabel.text : "없음"}>
+          {last && (
+            <span className={`delta ${lastLabel!.cls}`}>
+              {ago(last.createdAt)}
+              {last.message ? ` · ${last.message.slice(0, 40)}` : ""}
+            </span>
+          )}
+        </Stat>
+        <Stat label="기간 내 배포" value={`${inRange.length}건`}>
+          <span className={`delta ${failed ? "bad" : "flat"}`}>{failed ? `실패 ${failed}건` : "실패 없음"}</span>
+        </Stat>
+      </div>
+      {!a.ok && <p className="note">{a.reason}</p>}
+      {a.ok && gaUsers !== null && visitors > 0 && (
+        <p className="fine">
+          GA4 실사용자(봇 제외) {n(gaUsers)}명 · Vercel 방문자 {n(visitors)}명
+          {visitors > gaUsers * 1.5 ? " — Vercel이 훨씬 많다: 광고 차단·쿠키 거부로 GA에 안 잡히는 방문이 있거나 GA 봇 제외가 넓다." : gaUsers > visitors * 1.5 ? " — GA가 훨씬 많다: GA에 봇·중복 사용자가 남아 있을 수 있다." : " — 두 집계가 비슷하다."}
+        </p>
+      )}
+      {a.ok && (
+        <>
+          <div className="charts">
+            <div>
+              <h3>일별 방문자</h3>
+              <TrendChart points={cur.map((d) => ({ date: d.date, value: d.visitors }))} kind="count" color="s1" name="방문자" />
+            </div>
+            <div>
+              <h3>많이 본 페이지</h3>
+              {a.pages.length ? <BarList color="s2" items={topItems(a.pages, "p")} /> : <p className="note">데이터 없음</p>}
+            </div>
+          </div>
+          <div className="charts">
+            <div>
+              <h3>유입 사이트</h3>
+              {a.referrers.length ? <BarList color="s1" items={topItems(a.referrers, "r")} /> : <p className="note">데이터 없음</p>}
+            </div>
+            <div>
+              <h3>국가</h3>
+              {a.countries.length ? <BarList color="s1" items={topItems(a.countries, "c")} /> : <p className="note">데이터 없음</p>}
+            </div>
+          </div>
+        </>
+      )}
+      {v.deploys.length > 0 && (
+        <details className="excluded">
+          <summary>최근 프로덕션 배포 {v.deploys.length}건</summary>
+          <ul className="deploys">
+            {v.deploys.map((d) => {
+              const l = DEPLOY_LABEL[d.state] ?? { text: d.state, cls: "flat" };
+              return (
+                <li key={d.id}>
+                  <span className={`delta ${l.cls}`}>{l.text}</span> {ago(d.createdAt)}
+                  {d.message && <span className="fine"> · {d.message}</span>}
+                </li>
+              );
+            })}
+          </ul>
+        </details>
       )}
     </section>
   );

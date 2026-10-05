@@ -1,10 +1,14 @@
-import { BRANDS, statusFor, type BrandId } from "@/lib/platforms";
+import { BRANDS, statusFor, type BrandId, type PlatformId } from "@/lib/platforms";
 import { youtubeSummary, type YoutubeSummary } from "@/lib/youtube";
 import { metaSummary, weekSplit, type MetaSummary } from "@/lib/meta";
-import { demoMeta, demoOn, demoYoutube } from "@/lib/demo";
+import { ga4Summary } from "@/lib/ga4";
+import { googleAdsSummary } from "@/lib/googleads";
+import { revenueSummary } from "@/lib/revenue";
+import { demoAds, demoGa4, demoMeta, demoOn, demoRevenue, demoYoutube } from "@/lib/demo";
 import { fmtCompact, fmtDate, fmtValue } from "@/lib/format";
 import { TrendChart } from "@/components/TrendChart";
 import { BarList, Delta, Stat } from "@/components/ui";
+import { AdsPanel, Ga4Panel, RevenuePanel } from "@/components/panels";
 
 export const dynamic = "force-dynamic";
 
@@ -142,9 +146,15 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ b
   const brand: BrandId = BRANDS.some((b) => b.id === q) ? (q as BrandId) : "houscaper";
   const demo = demoOn();
   const statuses = statusFor(brand);
-  const isOn = (id: string) => demo && (id === "meta" || id === "youtube") ? true : statuses.find((s) => s.platform.id === id)?.connected;
-  const meta = isOn("meta") ? (demo ? demoMeta() : await metaSummary(brand)) : null;
-  const yt = isOn("youtube") ? (demo ? demoYoutube() : await youtubeSummary(brand)) : null;
+  const DEMO_ON: PlatformId[] = ["meta", "youtube", "ga4", "revenue", "google_ads"];
+  const isOn = (id: PlatformId) => (demo ? DEMO_ON.includes(id) : statuses.find((s) => s.platform.id === id)?.connected);
+  const [meta, yt, ga, rev, ads] = await Promise.all([
+    isOn("meta") ? (demo ? demoMeta() : metaSummary(brand)) : null,
+    isOn("youtube") ? (demo ? demoYoutube() : youtubeSummary(brand)) : null,
+    isOn("ga4") ? (demo ? demoGa4() : ga4Summary(brand)) : null,
+    isOn("revenue") ? (demo ? demoRevenue() : revenueSummary(brand)) : null,
+    isOn("google_ads") ? (demo ? demoAds() : googleAdsSummary(brand)) : null,
+  ]);
   const connectedCount = statuses.filter((s) => isOn(s.platform.id)).length;
   const pending = statuses.filter((s) => !isOn(s.platform.id));
   return (
@@ -163,7 +173,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ b
         {connectedCount} / {statuses.length} 플랫폼 연결됨 · 수치는 약 10분 간격으로 갱신됩니다.
       </p>
       {demo && <p className="demo">데모 데이터입니다. 실제 수치가 아닙니다.</p>}
+      {rev && <RevenuePanel real={rev} ga={ga} />}
+      {ga && <Ga4Panel g={ga} />}
       {meta && <MetaPanel m={meta} />}
+      {ads && <AdsPanel a={ads} ga={ga} />}
       {yt && <YoutubePanel y={yt} />}
       {pending.length > 0 && (
         <>

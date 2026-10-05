@@ -65,6 +65,15 @@ h3 { font-size: 13px; margin: 24px 0 8px; color: var(--ink2); font-weight: 600; 
 .bar-value { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
 .bar-tip { display: none; position: absolute; right: 8px; top: -30px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); padding: 4px 10px; font-size: 12px; white-space: nowrap; z-index: 2; }
 .bars li:hover .bar-tip, .bars li:focus-visible .bar-tip { display: block; }
+.alert { margin-top: 14px; padding: 10px 14px; border: 1px solid var(--warn); border-radius: 12px; font-size: 13px; background: color-mix(in srgb, var(--warn) 8%, transparent); }
+.alert strong { display: block; margin-bottom: 4px; font-size: 14px; }
+.alert p { margin: 4px 0 0; } .alert ul { margin: 4px 0 0; }
+.fine { font-size: 12px; color: var(--ink2); margin: 6px 0 0; }
+.ok-line { margin: 12px 0 0; font-size: 13px; color: var(--good); font-weight: 600; }
+.badge { display: inline-block; margin-left: 6px; padding: 0 7px; font-size: 11px; line-height: 18px; border: 1px solid currentColor; border-radius: 999px; white-space: nowrap; font-weight: 600; }
+.badge.bad { color: var(--bad); }
+.data tr.flag td { background: color-mix(in srgb, var(--bad) 7%, transparent); }
+.two { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
 .pending-title { margin-top: 32px; }
 .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }

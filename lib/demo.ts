@@ -50,3 +50,52 @@ export function demoYoutube(): YoutubeSummary {
     })),
   };
 }
+
+// ── GA4 · 실매출 · 구글 광고 데모 (화면 확인용, 실제 수치가 아님) ──
+import { flagSources, splitTraffic, type GeoRow, type SourceRow } from "@/lib/traffic";
+import type { Ga4Summary } from "@/lib/ga4";
+import type { GoogleAdsSummary } from "@/lib/googleads";
+import type { RevenueSummary } from "@/lib/revenue";
+
+export function demoGa4(): Ga4Summary {
+  const g = (country: string, city: string, u: number, s: number, avg: number, p = 0): GeoRow => ({
+    country, city, activeUsers: u, sessions: s, engagementSec: avg * s, purchases: p, revenue: p * 6800,
+  });
+  const geo = [
+    g("United States", "Boardman", 520, 540, 0.6), g("United States", "Ashburn", 260, 270, 0.9, 3), g("South Korea", "Seoul", 140, 230, 48),
+    g("South Korea", "Busan", 36, 58, 41), g("Philippines", "Manila", 44, 66, 2), g("United States", "New York", 18, 26, 33), g("Japan", "Tokyo", 12, 20, 29),
+  ];
+  const src: SourceRow[] = [
+    { sourceMedium: "google / cpc", sessions: 160, activeUsers: 120, engagedSessions: 4, engagementSec: 160 },
+    { sourceMedium: "(direct) / (none)", sessions: 420, activeUsers: 360, engagedSessions: 150, engagementSec: 14000 },
+    { sourceMedium: "google / organic", sessions: 180, activeUsers: 150, engagedSessions: 90, engagementSec: 9500 },
+    { sourceMedium: "instagram / social", sessions: 90, activeUsers: 82, engagedSessions: 51, engagementSec: 4300 },
+    { sourceMedium: "facebook / paid", sessions: 70, activeUsers: 64, engagedSessions: 30, engagementSec: 2600 },
+  ];
+  const totals = (k: number) => ({ activeUsers: Math.round(900 * k), sessions: Math.round(1100 * k), engagedSessions: Math.round(300 * k), engagementRate: 0.27, avgEngagementSec: 6.2, purchases: Math.round(3 * k), revenue: 20327 * k });
+  const d7 = totals(1);
+  const { flagged, split } = splitTraffic(geo, d7.activeUsers, d7.sessions);
+  return { ok: true, currency: "KRW", d7, d28: totals(2.6), sources: flagSources(src), geo: flagged, split, geoTruncated: false };
+}
+
+export function demoRevenue(): RevenueSummary {
+  return { ok: true, source: "polar", currency: "USD", orders: 0, amount: 0, truncated: false };
+}
+
+export function demoAds(): GoogleAdsSummary {
+  const days = Array.from({ length: 14 }, (_, i) => {
+    const wave = 1 + 0.3 * Math.sin(i / 2.2);
+    return { date: new Date(Date.UTC(2026, 8, 21 + i)).toISOString().slice(0, 10), clicks: Math.round(22 * wave), cost: Math.round(9000 * wave), impressions: Math.round(700 * wave) };
+  });
+  return {
+    ok: true,
+    accountName: "데모 구글 광고 계정",
+    currency: "KRW",
+    days,
+    campaigns: [
+      { name: "[데모] 검색 · 브랜드", cost: 38000, clicks: 96, impressions: 2100 },
+      { name: "[데모] 디스플레이 · 리마케팅", cost: 17500, clicks: 41, impressions: 2600 },
+      { name: "[데모] 성과 최대화", cost: 6900, clicks: 19, impressions: 480 },
+    ],
+  };
+}

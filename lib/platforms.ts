@@ -36,7 +36,7 @@ export const PLATFORMS: PlatformDef[] = [
     label: "유튜브",
     shared: ["GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET"],
     perBrand: ["YOUTUBE_REFRESH_TOKEN", "YOUTUBE_CHANNEL_ID"],
-    note: "채널마다 로그인 동의가 필요(브랜드 채널은 브랜드 계정으로 선택).",
+    note: "채널마다 로그인 동의가 필요(브랜드 채널은 브랜드 계정으로 선택). refresh token은 '유튜브 연결하기'로 발급(youtube.readonly, 1회 표시).",
   },
   {
     id: "ga4",
@@ -97,6 +97,7 @@ export const OPTIONAL_ENV = [
   "GOOGLE_ADS_API_VERSION", // 기본 v25. 구버전은 정해진 날짜에 종료된다
   "DASHBOARD_UTC_OFFSET_HOURS", // 실매출 날짜 경계. 기본 9(한국)
   "REDDIT_REDIRECT_URI", // 레딧 앱에 등록한 redirect. 기본은 접속한 사이트 주소(루트)
+  "YOUTUBE_REDIRECT_URI", // 구글 클라이언트에 등록한 redirect. 기본은 {사이트}/api/youtube/callback
   "TOPOGENESIS_PURCHASE_TABLE", // 기본 purchase
   "TOPOGENESIS_PURCHASE_DATE_COLUMN", // 기본 created_at
   "TOPOGENESIS_PURCHASE_AMOUNT_COLUMN", // 기본 amount (빈 값이면 건수만 집계)

@@ -104,12 +104,18 @@ function MetaPanel({ m }: { m: MetaSummary }) {
   );
 }
 
-function YoutubePanel({ y }: { y: YoutubeSummary }) {
+function YoutubePanel({ y, brand }: { y: YoutubeSummary; brand: BrandId }) {
   if (!y.ok) {
     return (
       <section className="panel">
         <h2>유튜브</h2>
         <p className="note">{y.reason}</p>
+        <p>
+          <a className="connect" href={`/api/youtube/connect?brand=${brand}`}>
+            유튜브 다시 연결
+          </a>
+          <span className="fine"> 구글 승인 후 새 refresh token을 한 번 보여 줍니다.</span>
+        </p>
       </section>
     );
   }
@@ -177,7 +183,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ b
       {ga && <Ga4Panel g={ga} />}
       {meta && <MetaPanel m={meta} />}
       {ads && <AdsPanel a={ads} ga={ga} />}
-      {yt && <YoutubePanel y={yt} />}
+      {yt && <YoutubePanel y={yt} brand={brand} />}
       {pending.length > 0 && (
         <>
           <h3 className="pending-title">연결이 필요한 플랫폼</h3>
@@ -187,6 +193,14 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ b
                 <h2>{platform.label}</h2>
                 <p className="state">연결 필요</p>
                 <p className="note">{platform.note}</p>
+                {platform.id === "youtube" && missing.length === 1 && missing[0].endsWith("_YOUTUBE_REFRESH_TOKEN") && (
+                  <p>
+                    <a className="connect" href={`/api/youtube/connect?brand=${brand}`}>
+                      유튜브 연결하기
+                    </a>
+                    <span className="fine"> 구글 승인 후 refresh token을 한 번 보여 줍니다.</span>
+                  </p>
+                )}
                 {platform.id === "reddit" && missing.length === 1 && missing[0].endsWith("_REDDIT_REFRESH_TOKEN") && (
                   <p>
                     <a className="connect" href={`/api/reddit/connect?brand=${brand}`}>

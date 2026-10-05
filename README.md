@@ -37,6 +37,13 @@
 3. 레딧에서 허용하면 사이트 루트로 돌아오고, 미들웨어가 콜백(`/api/reddit/callback`)으로 넘겨 code를 refresh token으로 교환한다.
 4. 토큰은 **한 번만 화면에 보이고** 서버 저장·캐시·로그는 하지 않는다. 그 값을 Vercel `{브랜드}_REDDIT_REFRESH_TOKEN`(Sensitive)에 넣고 재배포한다.
 
+## 유튜브 refresh token 발급 (`/api/youtube/connect?brand=houscaper|topogenesis`)
+1. **먼저 한 번만**: Google Cloud 콘솔(프로젝트 `ferrous-arena-510513-p2`) → API 및 서비스 → 사용자 인증 정보 → OAuth 클라이언트(`GOOGLE_OAUTH_CLIENT_ID`) → 승인된 리디렉션 URI에 `https://ad-monitor-eight.vercel.app/api/youtube/callback` 추가. 없으면 `redirect_uri_mismatch`.
+2. 유튜브 패널이 오류(예: `invalid_grant`)면 "유튜브 다시 연결", refresh token만 없으면 연결 필요 카드에 "유튜브 연결하기"가 보인다. **`https://ad-monitor-eight.vercel.app`에 로그인한 상태로** 누른다.
+3. 구글 계정 선택 화면에서 **그 브랜드 채널을 가진 계정(브랜드 계정이면 브랜드 계정)**을 고른다. 범위는 `youtube.readonly` 하나만 요청한다.
+4. 결과 화면이 채널(`{브랜드}_YOUTUBE_CHANNEL_ID`와 일치하는지), 권한(읽기 전용인지), 만료(Testing이면 약 7일)를 확인해 보여 주고, refresh token을 **한 번만** 보여 준다. Vercel `{브랜드}_YOUTUBE_REFRESH_TOKEN`(Sensitive)에 넣고 재배포한다.
+5. **7일 만료**: OAuth 동의 화면이 Testing 상태면 refresh token이 7일 뒤 만료된다(`invalid_grant`). 콘솔 → OAuth 동의 화면(대상) → "앱 게시"로 프로덕션에 올린 뒤 다시 연결하면 만료되지 않는다. 같은 클라이언트를 쓰는 `GA_REFRESH_TOKEN`, `GOOGLE_ADS_REFRESH_TOKEN`도 같은 이유로 7일마다 끊길 수 있다.
+
 ## 의심 트래픽 판정 (`lib/traffic.ts`)
 - 데이터센터 도시: Ashburn, Boardman, Council Bluffs, The Dalles, Drexel Hill, Columbus (목록은 `DATACENTER_CITIES`).
 - 낮은 참여: 표본 5세션 이상이고 세션당 평균 참여시간이 5초 미만인 소스/매체·국가. 국가 판정은 데이터센터 행을 뺀 뒤 계산한다.

@@ -195,6 +195,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Que
     meta: meta && meta.ok ? { days: meta.days, currency: meta.currency } : null,
     ads: ads && ads.ok ? { days: ads.days, currency: ads.currency } : null,
     realUsers: ga && ga.ok ? ga.real.activeUsers : null,
+    botUsers: ga && ga.ok ? ga.split.suspectUsers : null,
     orders: rev && rev.ok ? rev.orders : null,
     days: range.days,
   });

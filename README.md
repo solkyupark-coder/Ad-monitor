@@ -25,7 +25,7 @@
 | 유튜브 | OAuth 클라이언트 | `YOUTUBE_REFRESH_TOKEN`, `YOUTUBE_CHANNEL_ID` | `youtube.readonly` |
 | 메타 | — | `META_ACCESS_TOKEN`, `META_AD_ACCOUNT_ID` (+선택 `META_BUSINESS_ID`, `META_EXTRA_AD_ACCOUNT_IDS`) | `ads_read` (+`business_management`: 비즈니스 ID로 자동 탐색할 때) |
 
-속성·계정 ID (비밀이 아님): GA4 속성 하우스케이퍼 `555914097` / 토포제네시스 `487961539`, 구글 광고 고객 ID 하우스케이퍼 `8556065657` / 토포제네시스 `5133039562`.
+속성·계정 ID (비밀이 아님): GA4 속성 하우스케이퍼 `555914097` / 토포제네시스 `487961539`, 구글 광고 고객 ID 하우스케이퍼 `5133039562` / 토포제네시스 `9021418629`(하이픈 없이 10자리, 하이픈이 있어도 숫자만 읽는다), 관리자(MCC) `8554198133`. 이전 README의 `8556065657`·"토포제네시스 `5133039562`"는 잘못된 표기였다. 이 ID는 계정 전환 때 바뀔 수 있으니, 화면의 "고객 ID …" 오류 문구와 항상 대조한다.
 
 Vercel 프로젝트 ID (비밀이 아님): 팀 `team_O2UwFZ4PRZM3d3laZ0qo0Q3L`, 하우스케이퍼 사이트 `prj_YujoHG1apHBdbaRBcL5ke3sd78YZ`(houscaper) / 토포제네시스 사이트 `prj_poUfsSXZeDAOxDYpdkZgwxEzvB9s`(topo-genesis-3djs).
 Vercel 토큰: vercel.com → Account Settings → Tokens → 범위를 이 팀으로, 만료일 지정. 대시보드는 배포 목록·프로젝트 정보·Web Analytics 조회(GET)만 한다. 방문자·페이지뷰는 각 사이트 프로젝트에서 **Analytics(Web Analytics)를 켜야** 보이고, 꺼져 있으면 배포 기록만 보인다.
@@ -90,7 +90,25 @@ cashlee.co, ad2click.co 같은 "클릭하면 돈 주는" 사이트에서 오는 
 - **GA4**: 합계·소스/매체·지역·캠페인 요청 모두에서 `sessionSource`가 목록 도메인(하위 도메인 포함)인 세션을 요청 단계에서 뺀다. 그래서 세션·사용자·참여율·광고 효과 판정이 서로 어긋나지 않는다. 얼마나 뺐는지는 GA4 카드 위에 "세션·사용자 제외"로 보인다.
 - **Vercel**: "유입 사이트" 목록에서 빼고, 그 방문을 일별 방문자·페이지뷰에서도 뺀다. 제외량은 유입 사이트 아래에 보인다. 일별 차감 조회가 실패하면 "일별 방문자에는 반영하지 못함"이라고 표시한다.
 - **확장**: 기본 목록(`DEFAULT_BLOCKED_REFERRERS`)에 도메인을 추가하거나, 코드 수정 없이 env로 더한다 — `REFERRER_BLOCKLIST=a.com,b.net`(공통), `HOUSCAPER_REFERRER_BLOCKLIST` / `TOPOGENESIS_REFERRER_BLOCKLIST`(브랜드별). 도메인만 적는다(`https://`·`www.` 는 알아서 정리, `notcashlee.co`처럼 이름만 비슷한 도메인은 걸리지 않음).
+- **이름 패턴**: 도메인 목록에 없어도 호스트 이름에 `rupee`·`2pay`·`2click`·`paid4`·`earn`이 있으면 PTC로 본다(`adsrupee.com`은 목록에도 있다). `earn`은 `learn.microsoft.com`·`yearn…` 같은 정상 단어를 피하려고 앞 글자가 `l`·`y`가 아닐 때만 건다(그래서 `easyearn…`은 못 잡는다 — 그런 건 도메인으로 `REFERRER_BLOCKLIST`에 추가). 패턴 추가: `REFERRER_BLOCK_PATTERNS=freecash,gpt4`(영문·숫자·`-`, 3~30자). 잘못 걸린 정상 도메인은 `REFERRER_ALLOWLIST=a.example.com`으로 풀어 준다(차단보다 우선).
 - **한계**: 리퍼러를 숨기는 PTC 트래픽(소스가 `(direct)`로 찍힘)은 도메인으로 가려낼 수 없다. 그런 경우는 기존 "의심 트래픽"(데이터센터 도시·참여 5초 미만) 판정이 따로 걸러 준다. Vercel 일별 차감은 선택 기간 상위 100개 유입 도메인 안에서만 찾는다.
+
+## 구글 광고: 관리자(MCC) 로그인 ID와 `USER_PERMISSION_DENIED`
+- `GOOGLE_ADS_LOGIN_CUSTOMER_ID`(공통)는 **관리자 계정 아래에 있는 고객 계정**을 읽을 때만 필요하다. 관리자 아래가 아닌 계정(직접 초대받은 계정)에 이 헤더를 보내면 `USER_PERMISSION_DENIED`가 난다. 두 브랜드 계정의 위치가 다를 수 있으므로 **브랜드별 값**이 공통 값보다 우선한다: `{HOUSCAPER|TOPOGENESIS}_GOOGLE_ADS_LOGIN_CUSTOMER_ID`. 관리자 없이 직접 접근하는 계정이면 `none`으로 둔다(헤더를 아예 보내지 않음).
+- 설정을 잘못 맞춰도 읽히게 하려고, 헤더를 보냈는데 권한 오류가 나면 **헤더 없이 한 번 더** 시도하고 성공하면 그 사실을 구글 광고 카드 위에 알린다. 둘 다 거절되면 오류 문구에 보낸 로그인 ID, 고객 ID, 확인할 것(하이픈 없는 10자리 / 토큰 발급 계정이 그 고객 또는 관리자에 사용자로 초대돼 있는지)이 나온다.
+- 캠페인 목록 조회만 실패하면(합계는 성공) 이제 카드 위에 이유가 나온다. 예전에는 조용히 빈 목록이었다.
+- **토큰 재발급이 필요할 때**: `GOOGLE_ADS_REFRESH_TOKEN`은 **그 광고 계정(또는 관리자 계정)에 사용자로 초대된 구글 계정**으로 발급해야 한다. 지금은 관리자 855-419-8133에 접근하는 `sk9288go@gmail.com`이어야 한다. 순서: ① 그 계정으로 구글 광고에 로그인해 두 고객 ID(`5133039562`, `9021418629`)가 목록에 보이는지 확인 ② OAuth 클라이언트(`GOOGLE_OAUTH_CLIENT_ID`, 프로젝트 `ferrous-arena-510513-p2`)로 `https://www.googleapis.com/auth/adwords` 범위만 동의해 refresh token 발급(같은 클라이언트여야 접근 수준이 따라온다) ③ Vercel `GOOGLE_ADS_REFRESH_TOKEN`(Sensitive)을 교체하고 재배포. 값은 채팅에 붙이지 않는다.
+
+## 광고비 귀속 재분류 (`lib/attribution.ts`, `lib/merge.ts`)
+다른 브랜드 광고가 이 브랜드 광고 계정에서 결제되는 경우(예: Houscaper 계정으로 집행한 Topogenesis 인스타 부스트·구글 캠페인)를 올바른 브랜드 화면으로 옮긴다.
+- **기본 규칙**: 캠페인 이름에 `topo`(대소문자 무시)가 있거나, 광고 링크 도메인이 `topogenesis.xyz`(하위 도메인 포함)면 Topogenesis. 메타는 소재(creative) 안의 URL, 구글은 광고 최종 URL로 본다. 링크는 응답 모양이 달라도 문자열로 훑는 최선 추정이라 **이름 규칙을 같이 두는 게 확실하다**.
+- **옮겨진 캠페인**: 원래 브랜드의 합계·일별·캠페인 표에서 빠지고(일별에서도 뺀다), 받는 브랜드 화면에 "Houscaper 계정에서 결제됨" 표시와 함께 합계·캠페인 표·광고 효과 판정에 들어간다. 받는 브랜드 자체 계정이 실패(예: 구글 `CUSTOMER_NOT_ENABLED`)해도 옮겨 온 캠페인은 보이고 실패 알림은 그대로 남는다. 통화가 다르면 합치지 않고 알린다(자체 지출이 0이면 옮겨 온 쪽 통화로 맞춘다).
+- **env 로 확장(코드 수정 없음, 공통)**:
+  - `AD_REASSIGN_RULES="Same site=>topogenesis; 대지 경계=>topogenesis; 용도 이름만=>topogenesis"` — 이름에 패턴(대소문자 무시)이 있으면 그 브랜드로. `;` 로 여러 개.
+  - `AD_REASSIGN_LINK_HOSTS="example.com=>topogenesis"` — 링크 도메인 규칙 추가(기본 `topogenesis.xyz`는 항상 포함).
+  - `AD_REASSIGN_EXCEPT="topography; 하우스 topo"` — 이름에 이게 있으면 옮기지 않는다(예외, 규칙보다 우선).
+  - `AD_REASSIGN_DEFAULTS=off` — 기본 규칙(`topo`, `topogenesis.xyz`)을 끈다.
+- **한계**: 메타는 선택 기간에 지출이 있는 캠페인만 본다. 이름에 `topo`가 들어간 다른 브랜드 캠페인(예: "topography")은 예외 규칙으로 막는다.
 
 ## 레딧 refresh token 발급 (`/api/reddit/connect`)
 1. `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `{브랜드}_REDDIT_AD_ACCOUNT_ID`가 있고 refresh token만 없으면 레딧 카드에 "레딧 연결하기" 버튼이 보인다.

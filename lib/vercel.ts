@@ -3,7 +3,7 @@
 import type { BrandId } from "@/lib/platforms";
 import { BRANDS } from "@/lib/platforms";
 import { eachDay, rangeInstants, type DateRange } from "@/lib/range";
-import { blockedReferrers, isBlockedHost } from "@/lib/blocklist";
+import { blocklistFor, isBlocked, type Blocklist } from "@/lib/blocklist";
 
 const API = "https://api.vercel.com";
 const DAILY_CHUNK = 90; // 일별 조회 한 번에 읽는 최대 일수(API 한도 100행 이하)
@@ -40,7 +40,7 @@ function toTop(r: Row, dim: string): VercelTop {
   return { key: String(r[dim] ?? r.key ?? "(없음)"), pageviews: num(r.pageviews ?? r.count ?? r.total), visitors: num(r.visitors ?? r.devices) };
 }
 
-async function analytics(base: Record<string, string>, range: DateRange, token: string, blockList: string[]) {
+async function analytics(base: Record<string, string>, range: DateRange, token: string, blockList: Blocklist) {
   const cur = rangeInstants(range);
   const agg = (by: string, since: Date, until: Date, limit: string, filter?: string) =>
     call("/v1/query/web-analytics/visits/aggregate", { ...base, by, since: since.toISOString(), until: new Date(until.getTime() - 1).toISOString(), limit, ...(filter ? { filter } : {}) }, token);
@@ -66,7 +66,7 @@ async function analytics(base: Record<string, string>, range: DateRange, token: 
   const tops = (res: { json: Row | null }, dim: string) => (((res.json?.data as Row[]) ?? []).map((r) => toTop(r, dim)));
   // 리워드·클릭팜(PTC) 유입: 유입 사이트 목록에서 빼고, 그 방문을 일별 방문자·페이지뷰에서도 뺀다.
   const allRefs = tops(refs, "referrerHostname");
-  const hit = allRefs.filter((r) => isBlockedHost(r.key, blockList) && /^[a-z0-9.-]+$/i.test(r.key)).slice(0, MAX_BLOCKED_HOSTS);
+  const hit = allRefs.filter((r) => isBlocked(r.key, blockList) && /^[a-z0-9.-]+$/i.test(r.key)).slice(0, MAX_BLOCKED_HOSTS);
   let blocked: VercelBlocked | null = null;
   if (hit.length) {
     const filter = `referrerHostname in (${hit.map((h) => `'${h.key}'`).join(",")})`;
@@ -82,7 +82,7 @@ async function analytics(base: Record<string, string>, range: DateRange, token: 
     blocked = { visitors: hit.reduce((a, r) => a + r.visitors, 0), pageviews: hit.reduce((a, r) => a + r.pageviews, 0), hosts: hit.map((r) => r.key), dailyApplied };
   }
   const days = eachDay(range.prev.from, range.to).map((d) => byDate.get(d) ?? { date: d, pageviews: 0, visitors: 0 });
-  const referrers = allRefs.filter((r) => !isBlockedHost(r.key, blockList)).slice(0, 8);
+  const referrers = allRefs.filter((r) => !isBlocked(r.key, blockList)).slice(0, 8);
   return { ok: true as const, days, pages: tops(pages, "requestPath"), referrers, countries: tops(countries, "country"), blocked };
 }
 
@@ -97,7 +97,7 @@ export async function vercelSummary(brand: BrandId, range: DateRange): Promise<V
     const [proj, deps, an] = await Promise.all([
       call(`/v9/projects/${encodeURIComponent(projectId)}`, { teamId }, token),
       call("/v6/deployments", { ...base, target: "production", limit: "10" }, token),
-      analytics(base, range, token, blockedReferrers(prefix)),
+      analytics(base, range, token, blocklistFor(prefix)),
     ]);
     if (deps.status === 401 || deps.status === 403) return { ok: false, reason: "Vercel 토큰 거절 — 팀 범위 읽기 토큰인지 확인하세요" };
     if (deps.status === 404) return { ok: false, reason: `프로젝트를 찾지 못함 — ${prefix}_VERCEL_PROJECT_ID 를 확인하세요` };

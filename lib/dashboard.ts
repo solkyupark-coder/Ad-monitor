@@ -10,6 +10,7 @@ import { demoAds, demoGa4, demoMeta, demoOn, demoRevenue, demoVercel, demoYoutub
 import { buildOverview, type Overview } from "@/lib/overview";
 import { buildEffect, type EffectReport } from "@/lib/effect";
 import { buildActions, type ActionItem } from "@/lib/actions";
+import { mergeAdsMoved, mergeMetaMoved } from "@/lib/merge";
 import type { DateRange } from "@/lib/range";
 
 export type Dashboard = {
@@ -44,14 +45,21 @@ export async function loadDashboard(brand: BrandId, range: DateRange, skip: { yo
   const demo = demoOn();
   const statuses = statusFor(brand);
   const isOn = (id: PlatformId) => (demo ? DEMO_ON.includes(id) : statuses.find((s) => s.platform.id === id)?.connected);
-  const [meta, yt, ga, rev, ads, vc] = await Promise.all([
+  // 다른 브랜드 광고 계정에서 결제됐지만 이 브랜드 광고인 캠페인(lib/attribution.ts 규칙)을 받아 오려고 다른 브랜드의 광고도 함께 읽는다(10분 캐시).
+  const others = BRANDS.filter((b) => b.id !== brand).map((b) => ({ id: b.id, st: statusFor(b.id) }));
+  const otherOn = (st: PlatformStatus[], id: PlatformId) => !demo && !!st.find((s) => s.platform.id === id)?.connected;
+  const [metaRaw, yt, ga, rev, adsRaw, vc, otherMeta, otherAds] = await Promise.all([
     isOn("meta") ? (demo ? demoMeta(range) : metaSummary(brand, range)) : null,
     isOn("youtube") && !skip.youtube ? (demo ? demoYoutube() : youtubeSummary(brand)) : null,
     isOn("ga4") ? (demo ? demoGa4(range) : ga4Summary(brand, range)) : null,
     isOn("revenue") ? (demo ? demoRevenue(range) : revenueSummary(brand, range)) : null,
     isOn("google_ads") ? (demo ? demoAds(range) : googleAdsSummary(brand, range)) : null,
     isOn("vercel") && !skip.vercel ? (demo ? demoVercel(range) : vercelSummary(brand, range)) : null,
+    Promise.all(others.map((o) => (otherOn(o.st, "meta") ? metaSummary(o.id, range) : null))),
+    Promise.all(others.map((o) => (otherOn(o.st, "google_ads") ? googleAdsSummary(o.id, range) : null))),
   ]);
+  const meta = demo ? metaRaw : mergeMetaMoved(brand, metaRaw, otherMeta, range);
+  const ads = demo ? adsRaw : mergeAdsMoved(brand, adsRaw, otherAds, range);
   const overview = buildOverview({
     meta: meta && meta.ok ? { days: meta.days, currency: meta.currency } : null,
     ads: ads && ads.ok ? { days: ads.days, currency: ads.currency } : null,
@@ -67,7 +75,8 @@ export async function loadDashboard(brand: BrandId, range: DateRange, skip: { yo
     gaTruncated: ga && ga.ok ? ga.campaignsTruncated : false,
   });
   const pending = statuses.filter((s) => !isOn(s.platform.id));
-  const actions = buildActions({ days: range.days, meta, ads, ga, rev, vercel: vc, youtube: yt, pending: pending.map((p) => p.platform.label), verdict: overview.verdict, effect });
+  // 이 브랜드 자체 계정 조회가 실패했으면, 합친 결과가 정상이어도 실패 알림은 그대로 남긴다.
+  const actions = buildActions({ days: range.days, meta: metaRaw && !metaRaw.ok ? metaRaw : meta, ads: adsRaw && !adsRaw.ok ? adsRaw : ads, ga, rev, vercel: vc, youtube: yt, pending: pending.map((p) => p.platform.label), verdict: overview.verdict, effect });
   return {
     brand,
     brandLabel: BRANDS.find((b) => b.id === brand)!.label,

@@ -150,7 +150,8 @@ function MetaPanel({ m, range }: { m: MetaSummary; range: DateRange }) {
                     <td className="name" title={c.account ? `${c.name} · ${c.account}` : c.name}>
                       {c.name}
                       <span className="tags">
-                        {c.promo && <span className="vchip hold">프로모션</span>}
+                        {c.paidBy && <span className="vchip warn" title="이 광고비는 다른 브랜드의 광고 계정에서 결제됐습니다">{c.paidBy}</span>}
+                        {c.promo && !c.paidBy && <span className="vchip hold">프로모션</span>}
                         {st && (
                           <span className={`vchip ${st.level}`}>
                             <LevelIcon level={st.level} size={10} />

@@ -119,6 +119,13 @@ export const OPTIONAL_ENV = [
   "{BRAND}_META_EXTRA_AD_ACCOUNT_IDS", // 추가로 읽을 광고 계정 ID(쉼표 구분, 숫자 또는 act_숫자)
   "REFERRER_BLOCKLIST", // 리워드·클릭팜(PTC) 유입 차단 도메인을 더 추가(쉼표 구분, 두 브랜드 공통). 기본 목록은 lib/blocklist.ts
   "{BRAND}_REFERRER_BLOCKLIST", // 위와 같은 용도, 그 브랜드만
+  "REFERRER_BLOCK_PATTERNS", // PTC 이름 패턴 추가(rupee·2pay·2click·paid4·earn 은 기본 포함, 쉼표 구분)
+  "REFERRER_ALLOWLIST", // 패턴에 잘못 걸린 정상 도메인을 풀어 줌
+  "AD_REASSIGN_RULES", // 다른 브랜드 광고로 옮길 이름 규칙: "패턴=>브랜드; …" (기본: 이름에 topo → topogenesis)
+  "AD_REASSIGN_LINK_HOSTS", // 링크 도메인 규칙: "도메인=>브랜드; …" (기본: topogenesis.xyz)
+  "AD_REASSIGN_EXCEPT", // 옮기지 않을 이름 패턴(예외)
+  "AD_REASSIGN_DEFAULTS", // off 면 기본 재분류 규칙을 끈다
+  "{BRAND}_GOOGLE_ADS_LOGIN_CUSTOMER_ID", // 브랜드별 관리자(MCC) ID. none 이면 헤더를 보내지 않는다(공통 값보다 우선)
   "GOOGLE_ADS_LOGIN_CUSTOMER_ID", // 관리자(MCC) 계정으로 접근할 때만
   "GOOGLE_ADS_API_VERSION", // 기본 v25. 구버전은 정해진 날짜에 종료된다
   "DASHBOARD_UTC_OFFSET_HOURS", // 실매출 날짜 경계. 기본 9(한국)

@@ -287,6 +287,11 @@ export function AdsPanel({ a, ga, range }: { a: GoogleAdsSummary; ga: Ga4Summary
         <h2>구글 광고</h2>
         <p className="meta">{a.accountName} · {range.label}</p>
       </div>
+      {a.notes.map((nt) => (
+        <div key={nt} className="alert warn" role="note">
+          <p>{nt}</p>
+        </div>
+      ))}
       <div className="kpis">
         <Stat label="비용" value={c.cost} kind="won" currency={a.currency} hero>
           <Delta cur={c.cost} prev={p?.cost ?? null} goodWhen="neutral" />
@@ -363,6 +368,11 @@ export function AdsPanel({ a, ga, range }: { a: GoogleAdsSummary; ga: Ga4Summary
                   <tr key={x.name}>
                     <td className="name" title={x.name}>
                       {x.name}
+                      {x.paidBy && (
+                        <span className="tags">
+                          <span className="vchip warn" title="이 광고비는 다른 브랜드의 광고 계정에서 결제됐습니다">{x.paidBy}</span>
+                        </span>
+                      )}
                     </td>
                     <td>
                       <span className="inline-bar">

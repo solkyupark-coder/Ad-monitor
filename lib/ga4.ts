@@ -3,7 +3,7 @@ import { googleToken, logFailure, tokenFailureReason } from "@/lib/google";
 import { BRANDS, type BrandId } from "@/lib/platforms";
 import type { DateRange } from "@/lib/range";
 import type { GaCampaignRow } from "@/lib/effect";
-import { blockedReferrers, ga4SourceRegex, isBlockedSource } from "@/lib/blocklist";
+import { blocklistFor, ga4BlockedExpression, isBlockedSource } from "@/lib/blocklist";
 import { DATACENTER_CITIES, excludeSuspect, splitTraffic, flagSources, type FlaggedGeo, type FlaggedSource, type GeoRow, type SourceRow, type Totals, type TrafficSplit } from "@/lib/traffic";
 
 export type Ga4Totals = {
@@ -112,8 +112,8 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
     }
     const token = t.token;
     // 리워드·클릭팜(PTC) 유입은 요청 단계에서 빼서 합계·소스·지역·캠페인 수치가 서로 어긋나지 않게 한다.
-    const blockList = blockedReferrers(prefix);
-    const ptcFilter = { filter: { fieldName: "sessionSource", stringFilter: { matchType: "FULL_REGEXP", value: ga4SourceRegex(blockList), caseSensitive: false } } };
+    const blockList = blocklistFor(prefix);
+    const ptcFilter = ga4BlockedExpression(blockList);
     const notPtc = { notExpression: ptcFilter };
     const run = (body: object) =>
       fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`, {

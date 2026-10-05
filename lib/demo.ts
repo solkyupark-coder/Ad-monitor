@@ -39,12 +39,14 @@ export function demoMeta(r: DateRange): MetaSummary {
       { name: "[데모] 시즌 프로모션", spend: 1980, impressions: 572, clicks: 29 },
     ].map((c): MetaCampaign => scaleCampaign(c, r.days / 7)).concat([
       { ...scaleCampaign({ name: "Instagram post: [데모] 신작 공개", spend: 8800, impressions: 3400, clicks: 52 }, r.days / 7), account: "데모 인스타그램 프로모션", status: "ACTIVE", promo: true },
+      { ...scaleCampaign({ name: "[데모] topoGenesis — 사이트 소개", spend: 5400, impressions: 2100, clicks: 38 }, r.days / 7), account: "데모 하우스 광고 계정", status: "ACTIVE", paidBy: "Houscaper 계정에서 결제됨" },
     ]),
     accounts: [
       { id: "act_1000000000001", name: "데모 광고 계정", role: "main", currency: "KRW", spend: 35594, campaigns: 4, included: true, ok: true },
       { id: "act_1000000000002", name: "데모 인스타그램 프로모션", role: "discovered", currency: "KRW", spend: 8800, campaigns: 1, included: true, ok: true },
     ],
     notes: [],
+    moved: [],
   };
 }
 
@@ -132,6 +134,8 @@ export function demoAds(r: DateRange): GoogleAdsSummary {
     ok: true,
     accountName: "데모 구글 광고 계정",
     currency: "KRW",
+    notes: [],
+    moved: [],
     days,
     campaigns: [
       { name: "[데모] 검색 · 브랜드", cost: 38000, clicks: 96, impressions: 2100 },

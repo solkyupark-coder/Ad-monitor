@@ -1,6 +1,7 @@
 // 메타 광고 읽기 전용 조회(Marketing API insights). 토큰·ID 값은 화면·로그에 내지 않는다.
 import { BRANDS, type BrandId } from "@/lib/platforms";
 import { eachDay, type DateRange } from "@/lib/range";
+import { decide, hostsIn, loadRules, subtractDays, type MovedAd, type Rules } from "@/lib/attribution";
 
 export type MetaDay = { date: string; spend: number; impressions: number; clicks: number };
 export type MetaCampaign = {
@@ -11,6 +12,7 @@ export type MetaCampaign = {
   account?: string; // 이 캠페인이 있는 광고 계정 이름(계정이 여러 개일 때 구분)
   status?: string; // 메타 effective_status (ACTIVE, PAUSED …)
   promo?: boolean; // 인스타·페이스북 프로모션(부스트)로 보이는 캠페인
+  paidBy?: string; // 다른 브랜드 광고 계정에서 결제돼 이 브랜드로 옮겨 온 캠페인이면 그 표시(예: "Houscaper 계정에서 결제됨")
 };
 // 브랜드가 쓰는 광고 계정 하나. 인스타그램 프로모션(비즈니스 스위트)은 Ads Manager 계정과 다른 광고 계정에 생기는 경우가 많다.
 export type MetaAccountRole = "main" | "extra" | "discovered";
@@ -26,7 +28,7 @@ export type MetaAccount = {
   reason?: string;
 };
 export type MetaSummary =
-  | { ok: true; accountName: string; currency: string; days: MetaDay[]; campaigns: MetaCampaign[]; accounts: MetaAccount[]; notes: string[] }
+  | { ok: true; accountName: string; currency: string; days: MetaDay[]; campaigns: MetaCampaign[]; accounts: MetaAccount[]; notes: string[]; moved: MovedAd[] }
   | { ok: false; reason: string };
 
 export type MetaTotals = { spend: number; impressions: number; clicks: number; ctr: number; cpc: number; cpm: number };
@@ -115,6 +117,55 @@ async function fetchAccount(token: string, account: string, range: DateRange): P
   }
 }
 
+// 캠페인 → 광고 링크 도메인들(소재의 JSON 안 URL에서 뽑는다). 필드 모양이 달라도 읽히게 문자열로 훑고, 실패해도 이름 규칙은 그대로 동작한다.
+async function fetchLinkHosts(token: string, account: string): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  try {
+    const res = await fetch(`${API}/${account}/ads?fields=campaign_id,creative{link_url,object_story_spec,asset_feed_spec}&limit=200`, { headers: { authorization: `Bearer ${token}` }, next: { revalidate: 600 } });
+    if (!res.ok) return out;
+    for (const ad of ((await res.json()) as { data?: { campaign_id?: string; creative?: unknown }[] }).data ?? []) {
+      if (!ad.campaign_id) continue;
+      const hosts = hostsIn(JSON.stringify(ad.creative ?? {}));
+      if (hosts.length) out.set(ad.campaign_id, [...new Set([...(out.get(ad.campaign_id) ?? []), ...hosts])]);
+    }
+  } catch {
+    /* 링크 규칙만 못 쓴다 */
+  }
+  return out;
+}
+
+// 이 계정 캠페인 중 다른 브랜드 광고로 보이는 것과 그 일별 값. 일별은 옮겨질 캠페인만 따로 조회한다.
+async function findMoved(token: string, id: string, res: AcctOk, brand: BrandId, range: DateRange, rules: Rules): Promise<MovedAd[]> {
+  const links = rules.links.length ? await fetchLinkHosts(token, id) : new Map<string, string[]>();
+  const picks = res.campaigns
+    .map((r) => ({ r, d: r.campaign_id ? decide(rules, brand, r.campaign_name ?? "", links.get(r.campaign_id) ?? []) : null }))
+    .filter((x): x is { r: Row & { status?: string }; d: { to: BrandId; why: string } } => !!x.d);
+  if (!picks.length) return [];
+  const ids = picks.map((x) => x.r.campaign_id as string);
+  let rows: Row[] = [];
+  try {
+    const filtering = encodeURIComponent(JSON.stringify([{ field: "campaign.id", operator: "IN", value: ids }]));
+    const r = await fetch(`${API}/${id}/insights?fields=campaign_id,spend,impressions,clicks&level=campaign&time_increment=1&limit=1000&filtering=${filtering}&time_range=${encodeURIComponent(JSON.stringify({ since: range.prev.from, until: range.to }))}`, { headers: { authorization: `Bearer ${token}` }, next: { revalidate: 600 } });
+    if (r.ok) rows = ((await r.json()) as { data?: Row[] }).data ?? [];
+  } catch {
+    /* 일별을 못 읽으면 아래에서 캠페인 합계만으로 처리한다 */
+  }
+  return picks.map(({ r, d }) => ({
+    source: "meta" as const,
+    from: brand,
+    to: d.to,
+    account: res.name || id,
+    name: r.campaign_name ?? "(이름 없음)",
+    currency: res.currency,
+    spend: Number(r.spend ?? 0),
+    impressions: Number(r.impressions ?? 0),
+    clicks: Number(r.clicks ?? 0),
+    status: r.status,
+    why: d.why,
+    days: fillDays(rows.filter((x) => x.campaign_id === r.campaign_id), range),
+  }));
+}
+
 // 비즈니스(포트폴리오)가 소유·대행하는 광고 계정 ID들. 인스타 프로모션 전용 계정을 ID 없이 찾는 용도(business_management 필요).
 async function discoverAccounts(token: string, business: string): Promise<{ ids: string[]; failed: boolean }> {
   const headers = { authorization: `Bearer ${token}` };
@@ -176,7 +227,15 @@ export async function metaSummary(brand: BrandId, range: DateRange): Promise<Met
     return { ok: false, reason: first && !first.ok ? first.reason : "조회 실패" };
   }
   const mainRes = results[ids.indexOf(main)];
-  const baseCurrency = mainRes?.ok ? mainRes.currency : (results[okIdx[0]] as AcctOk).currency;
+  // 기준 통화: 대표 계정의 통화. 대표 계정에 이 기간 지출이 없으면(예: 캠페인 0인 Ads Manager) 지출이 가장 큰 통화로 바꾼다.
+  const spendOf = (r: AcctOk) => r.days.slice(-range.days).reduce((a, d) => a + d.spend, 0);
+  let baseCurrency = mainRes?.ok ? mainRes.currency : (results[okIdx[0]] as AcctOk).currency;
+  if (!mainRes?.ok || spendOf(mainRes) === 0) {
+    const byCur = new Map<string, number>();
+    for (const i of okIdx) { const r = results[i] as AcctOk; byCur.set(r.currency, (byCur.get(r.currency) ?? 0) + spendOf(r)); }
+    const top = [...byCur.entries()].sort((a, b) => b[1] - a[1])[0];
+    if (top && top[1] > 0) baseCurrency = top[0];
+  }
   if (mainRes && !mainRes.ok) notes.push(`Ads Manager 대표 계정을 읽지 못했습니다: ${mainRes.reason}`);
 
   const accounts: MetaAccount[] = [];
@@ -193,6 +252,19 @@ export async function metaSummary(brand: BrandId, range: DateRange): Promise<Met
     const rangeSpend = r.days.slice(-range.days).reduce((a, d) => a + d.spend, 0);
     accounts.push({ id, name: r.name, role, currency: r.currency, spend: rangeSpend, campaigns: r.campaigns.length, included: inc, ok: true });
     if (inc) included.push({ id, res: r });
+  });
+
+  // 다른 브랜드 광고로 보이는 캠페인(예: Houscaper 계정에서 결제한 Topogenesis 부스트)은 이 브랜드 합계에서 빼고 따로 들고 간다.
+  const rules = loadRules();
+  const movedBy = await Promise.all(included.map(({ id, res }) => findMoved(token, id, res, brand, range, rules)));
+  const moved = movedBy.flat();
+  if (moved.length) {
+    const byTo = new Map<string, number>();
+    for (const m of moved) byTo.set(m.to, (byTo.get(m.to) ?? 0) + m.spend);
+    notes.push(`다른 브랜드 광고로 보이는 캠페인 ${moved.length}개(${[...byTo.entries()].map(([to, v]) => `${to} ${Math.round(v).toLocaleString("ko-KR")} ${baseCurrency}`).join(", ")})를 이 브랜드 합계에서 빼 그 브랜드 화면으로 옮겼습니다.`);
+  }
+  included.forEach((inc, i) => {
+    if (movedBy[i].length) inc.res = { ...inc.res, days: subtractDays(inc.res.days, movedBy[i].map((m) => m.days)), campaigns: inc.res.campaigns.filter((c) => !movedBy[i].some((m) => m.name === (c.campaign_name ?? "(이름 없음)"))) };
   });
 
   // 같은 날짜끼리 합친다(모든 계정이 같은 날짜 목록을 가진다).
@@ -229,5 +301,5 @@ export async function metaSummary(brand: BrandId, range: DateRange): Promise<Met
   if (!anySpend && !campaigns.length && !extra.length && !business) {
     notes.push(`이 기간 Ads Manager 계정(${main})에 광고가 없습니다. 인스타그램 프로모션(부스트)은 다른 광고 계정에 있을 수 있어요 — ${prefix}_META_BUSINESS_ID(자동 탐색) 또는 ${prefix}_META_EXTRA_AD_ACCOUNT_IDS(직접 지정)를 설정하세요.`);
   }
-  return { ok: true, accountName: included.map((i) => i.res.name || i.id).join(" · "), currency: baseCurrency, days, campaigns, accounts, notes };
+  return { ok: true, accountName: included.map((i) => i.res.name || i.id).join(" · "), currency: baseCurrency, days, campaigns, accounts, notes, moved };
 }

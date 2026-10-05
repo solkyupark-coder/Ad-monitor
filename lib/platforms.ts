@@ -27,9 +27,9 @@ export const PLATFORMS: PlatformDef[] = [
   {
     id: "google_ads",
     label: "구글 광고",
-    shared: ["GOOGLE_ADS_DEVELOPER_TOKEN", "GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_ADS_REFRESH_TOKEN"],
+    shared: ["GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_ADS_REFRESH_TOKEN"],
     perBrand: ["GOOGLE_ADS_CUSTOMER_ID"],
-    note: "개발자 토큰 승인에 며칠 걸릴 수 있음.",
+    note: "개발자 토큰 불필요(2026-09 종료). 접근 수준은 OAuth 클라이언트의 Cloud 프로젝트(Explorer 이상) 기준. refresh token은 adwords 범위.",
   },
   {
     id: "youtube",
@@ -118,4 +118,5 @@ export const UNUSED_ENV = [
   "FACEBOOK_PAGE_ID",
   "FACEBOOK_PAGE_NAME",
   "NEXT_PUBLIC_GA_MEASUREMENT_ID",
+  "GOOGLE_ADS_DEVELOPER_TOKEN", // 2026-09-09 개발자 토큰 종료. 있어도 보내지 않는다
 ] as const;

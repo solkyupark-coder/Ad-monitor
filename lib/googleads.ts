@@ -1,5 +1,6 @@
-// 구글 광고 읽기 전용 조회(Google Ads API, REST + GAQL). 토큰·ID 값은 화면·로그에 내지 않는다.
-// 개발자 토큰이 승인되기 전에는 '연결 필요'/오류 문구만 보이고, 승인되면 그대로 동작한다.
+// 구글 광고 읽기 전용 조회(Google Ads API, REST + GAQL). 토큰 값은 화면·로그에 내지 않는다.
+// 개발자 토큰은 2026-09-09에 종료됐다. 접근 수준(Explorer 등)은 OAuth 클라이언트를 만든 Google Cloud 프로젝트에 붙으므로
+// developer-token 헤더를 보내지 않는다(이후 메이저 버전에서는 거절될 예정).
 import { googleToken, logFailure, tokenFailureReason } from "@/lib/google";
 import { BRANDS, type BrandId } from "@/lib/platforms";
 import { yesterdayDate } from "@/lib/revenue";
@@ -16,7 +17,10 @@ type AdsRow = {
   segments?: { date?: string };
   metrics?: { clicks?: string; costMicros?: string; impressions?: string };
 };
-type AdsResp = { results?: AdsRow[]; error?: { message?: string; details?: { errors?: { errorCode?: Record<string, string> }[] }[] } };
+type AdsResp = {
+  results?: AdsRow[];
+  error?: { status?: string; message?: string; details?: { errors?: { errorCode?: Record<string, string>; message?: string }[] }[] };
+};
 
 // 활동이 없는 날은 행이 오지 않으므로, 어제까지 14일을 0으로 채워 날짜 기준으로 자를 수 있게 한다.
 function fillDays(rows: AdsDay[]): AdsDay[] {
@@ -42,10 +46,9 @@ function errorCode(body: AdsResp): string | undefined {
 
 export async function googleAdsSummary(brand: BrandId): Promise<GoogleAdsSummary> {
   const prefix = BRANDS.find((b) => b.id === brand)!.prefix;
-  const devToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
   const refresh = process.env.GOOGLE_ADS_REFRESH_TOKEN;
   const customerId = digits(process.env[`${prefix}_GOOGLE_ADS_CUSTOMER_ID`]);
-  if (!devToken || !refresh || !customerId) return { ok: false, reason: "자격증명 없음" };
+  if (!refresh || !customerId) return { ok: false, reason: "자격증명 없음" };
   const loginId = digits(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID);
   const version = /^v\d+$/.test(process.env.GOOGLE_ADS_API_VERSION ?? "") ? process.env.GOOGLE_ADS_API_VERSION : "v25";
   try {
@@ -57,7 +60,6 @@ export async function googleAdsSummary(brand: BrandId): Promise<GoogleAdsSummary
     const token = t.token;
     const headers: Record<string, string> = {
       authorization: `Bearer ${token}`,
-      "developer-token": devToken,
       "content-type": "application/json",
       ...(loginId ? { "login-customer-id": loginId } : {}),
     };
@@ -75,13 +77,27 @@ export async function googleAdsSummary(brand: BrandId): Promise<GoogleAdsSummary
     ]);
     const bad = [infoRes, dayRes].find((r) => !r.ok);
     if (bad) {
-      const code = errorCode((await bad.json().catch(() => ({}))) as AdsResp);
-      if (code === "DEVELOPER_TOKEN_NOT_APPROVED") return { ok: false, reason: "개발자 토큰이 아직 승인되지 않았습니다(테스트 권한)" };
-      if (code === "DEVELOPER_TOKEN_INVALID") return { ok: false, reason: "개발자 토큰이 올바르지 않습니다" };
-      if (code === "USER_PERMISSION_DENIED" || code === "CUSTOMER_NOT_ENABLED") return { ok: false, reason: "계정 접근 권한이 없습니다 — 관리자 계정(GOOGLE_ADS_LOGIN_CUSTOMER_ID)과 연결을 확인하세요" };
-      if (bad.status === 401) return { ok: false, reason: "토큰 거절 — GOOGLE_ADS_REFRESH_TOKEN을 다시 발급하세요" };
-      if (bad.status === 404) return { ok: false, reason: "API 버전이 종료됐을 수 있습니다 — GOOGLE_ADS_API_VERSION을 확인하세요" };
-      return { ok: false, reason: "조회 실패 — 고객 ID와 권한을 확인하세요" };
+      const body = (await bad.json().catch(() => ({}))) as AdsResp;
+      const code = errorCode(body);
+      const tag = code ?? body.error?.status ?? `HTTP ${bad.status}`;
+      const detail = body.error?.details?.[0]?.errors?.[0]?.message ?? body.error?.message ?? "";
+      logFailure("google-ads", brand, `customer ${customerId} ${version} ${bad.status} ${tag} ${detail}`.trim());
+      if (code?.startsWith("DEVELOPER_TOKEN") || /access level|explorer|basic access/i.test(detail)) {
+        return { ok: false, reason: `Cloud 프로젝트의 Google Ads API 접근 수준을 확인하세요 — OAuth 클라이언트가 속한 프로젝트에 Explorer 이상 접근이 있어야 합니다 (${tag})` };
+      }
+      if (code === "USER_PERMISSION_DENIED") {
+        return { ok: false, reason: `토큰을 발급한 구글 계정이 고객 ID ${customerId}에 접근할 수 없습니다 — 관리자 계정을 거치면 GOOGLE_ADS_LOGIN_CUSTOMER_ID를 설정하세요 (${tag})` };
+      }
+      if (code === "CUSTOMER_NOT_ENABLED") return { ok: false, reason: `고객 ID ${customerId} 광고 계정이 활성 상태가 아닙니다 (${tag})` };
+      if (/SCOPE_INSUFFICIENT|insufficient.*scope/i.test(`${tag} ${detail}`)) {
+        return { ok: false, reason: `GOOGLE_ADS_REFRESH_TOKEN에 adwords 범위가 없습니다 — 그 범위로 다시 발급하세요 (${tag})` };
+      }
+      if (/has not been used|is disabled|SERVICE_DISABLED/i.test(detail)) {
+        return { ok: false, reason: `Cloud 프로젝트에서 Google Ads API를 사용 설정하세요 (${tag})` };
+      }
+      if (bad.status === 401) return { ok: false, reason: `토큰 거절 — GOOGLE_ADS_REFRESH_TOKEN을 다시 발급하세요 (${tag})` };
+      if (bad.status === 404) return { ok: false, reason: `API 버전 ${version}이 없거나 종료됐을 수 있습니다 — GOOGLE_ADS_API_VERSION을 확인하세요 (${tag})` };
+      return { ok: false, reason: `조회 실패 — 고객 ID ${customerId}와 권한을 확인하세요 (${tag})` };
     }
     const info = ((await infoRes.json()) as AdsResp).results?.[0]?.customer;
     const days = fillDays((((await dayRes.json()) as AdsResp).results ?? []).map((r) => ({ date: r.segments?.date ?? "", ...metric(r) })).filter((d) => d.date));
@@ -89,7 +105,8 @@ export async function googleAdsSummary(brand: BrandId): Promise<GoogleAdsSummary
       ? (((await campRes.json()) as AdsResp).results ?? []).map((r) => ({ name: r.campaign?.name ?? "(이름 없음)", ...metric(r) }))
       : [];
     return { ok: true, accountName: info?.descriptiveName ?? "", currency: info?.currencyCode ?? "KRW", days, campaigns };
-  } catch {
+  } catch (e) {
+    logFailure("google-ads", brand, `network ${e instanceof Error ? e.message : String(e)}`);
     return { ok: false, reason: "조회 실패(네트워크)" };
   }
 }

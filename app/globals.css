@@ -78,6 +78,18 @@ h3 { font-size: 13px; margin: 24px 0 8px; color: var(--ink2); font-weight: 600; 
 .excluded summary { cursor: pointer; }
 .excluded table { margin-top: 8px; }
 .connect { display: inline-block; margin: 6px 0; padding: 8px 14px; border-radius: 999px; background: var(--ink); color: var(--surface); text-decoration: none; font-size: 13px; font-weight: 600; }
+.funnel { list-style: none; margin: 18px 0 0; padding: 0; }
+.funnel li { display: flex; flex-direction: column; }
+.funnel-rate { margin: 2px 0 2px 180px; font-size: 12px; color: var(--ink2); font-variant-numeric: tabular-nums; }
+.funnel-row { display: grid; grid-template-columns: 168px minmax(0, 1fr) 96px; gap: 12px; align-items: center; padding: 6px 0; }
+.funnel-label { display: flex; flex-direction: column; font-size: 14px; font-weight: 600; }
+.funnel-label .fine { margin: 0; font-weight: 400; font-size: 11px; }
+.funnel-track { height: 22px; display: block; }
+.funnel-track.missing { border: 1px dashed var(--axis); border-radius: 4px; }
+.funnel-bar { display: block; height: 100%; background: var(--s1); border-radius: 0 4px 4px 0; }
+.funnel-value { text-align: right; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.funnel-value.zero { color: var(--bad); }
+@media (max-width: 560px) { .funnel-row { grid-template-columns: minmax(0, 1fr) 84px; } .funnel-track { grid-column: 1 / -1; grid-row: 2; } .funnel-rate { margin-left: 0; } }
 .pending-title { margin-top: 32px; }
 .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }

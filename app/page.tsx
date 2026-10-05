@@ -9,6 +9,8 @@ import { fmtCompact, fmtDate, fmtValue } from "@/lib/format";
 import { TrendChart } from "@/components/TrendChart";
 import { BarList, Delta, Stat } from "@/components/ui";
 import { AdsPanel, Ga4Panel, RevenuePanel } from "@/components/panels";
+import { OverviewPanel } from "@/components/Overview";
+import { buildOverview } from "@/lib/overview";
 
 export const dynamic = "force-dynamic";
 
@@ -161,6 +163,12 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ b
     isOn("revenue") ? (demo ? demoRevenue() : revenueSummary(brand)) : null,
     isOn("google_ads") ? (demo ? demoAds() : googleAdsSummary(brand)) : null,
   ]);
+  const overview = buildOverview({
+    meta: meta && meta.ok ? { days: meta.days, currency: meta.currency } : null,
+    ads: ads && ads.ok ? { days: ads.days, currency: ads.currency } : null,
+    realUsers: ga && ga.ok ? ga.real7.activeUsers : null,
+    orders: rev && rev.ok ? rev.orders : null,
+  });
   const connectedCount = statuses.filter((s) => isOn(s.platform.id)).length;
   const pending = statuses.filter((s) => !isOn(s.platform.id));
   return (
@@ -179,6 +187,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ b
         {connectedCount} / {statuses.length} 플랫폼 연결됨 · 수치는 약 10분 간격으로 갱신됩니다.
       </p>
       {demo && <p className="demo">데모 데이터입니다. 실제 수치가 아닙니다.</p>}
+      <OverviewPanel o={overview} />
       {rev && <RevenuePanel real={rev} ga={ga} />}
       {ga && <Ga4Panel g={ga} />}
       {meta && <MetaPanel m={meta} />}

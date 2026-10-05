@@ -1,6 +1,7 @@
 import type { Ga4Summary } from "@/lib/ga4";
 import type { GoogleAdsSummary } from "@/lib/googleads";
 import type { RevenueSummary } from "@/lib/revenue";
+import type { DateRange } from "@/lib/range";
 import { adsEngagement, byCountry, compareRevenue, findGoogleCpc, LOW_ENGAGEMENT_SEC } from "@/lib/traffic";
 import { fmtCompact, fmtValue } from "@/lib/format";
 import { TrendChart } from "@/components/TrendChart";
@@ -20,9 +21,9 @@ function ErrorPanel({ title, reason }: { title: string; reason: string }) {
   );
 }
 
-export function Ga4Panel({ g }: { g: Ga4Summary }) {
+export function Ga4Panel({ g, range }: { g: Ga4Summary; range: DateRange }) {
   if (!g.ok) return <ErrorPanel title="웹사이트 (GA4)" reason={g.reason} />;
-  const { real7, real28, split } = g;
+  const { real, realPrev, split } = g;
   // 기본 화면은 의심 트래픽(데이터센터 도시·참여 5초 미만)을 뺀 실수치만 보여 준다.
   const clean = g.geo.filter((r) => !r.flag);
   const countries = byCountry(clean).slice(0, 10);
@@ -34,24 +35,24 @@ export function Ga4Panel({ g }: { g: Ga4Summary }) {
     <section className="panel">
       <div className="panel-head">
         <h2>웹사이트 (GA4)</h2>
-        <p className="meta">최근 7일 (어제까지) · 봇 의심 트래픽 제외</p>
+        <p className="meta">{range.label} · 봇 의심 트래픽 제외</p>
       </div>
       <div className="kpis">
-        <Stat label="실사용자 (7일)" value={`${n(real7.activeUsers)}명`} hero>
-          <Sub>28일 {n(real28.activeUsers)}명</Sub>
+        <Stat label="실사용자" value={`${n(real.activeUsers)}명`} hero>
+          <Delta cur={real.activeUsers} prev={realPrev.activeUsers} goodWhen="up" />
         </Stat>
-        <Stat label="세션 (7일)" value={real7.sessions} kind="count">
-          <Sub>28일 {n(real28.sessions)}</Sub>
+        <Stat label="세션" value={real.sessions} kind="count">
+          <Delta cur={real.sessions} prev={realPrev.sessions} goodWhen="up" />
         </Stat>
-        <Stat label="참여율 (7일)" value={pct(real7.engagementRate)}>
-          <Sub>28일 {pct(real28.engagementRate)}</Sub>
+        <Stat label="참여율" value={pct(real.engagementRate)}>
+          <Delta cur={real.engagementRate} prev={realPrev.engagementRate} goodWhen="up" />
         </Stat>
-        <Stat label="세션당 참여시간 (7일)" value={sec(real7.avgEngagementSec)}>
-          <Sub>28일 {sec(real28.avgEngagementSec)}</Sub>
+        <Stat label="세션당 참여시간" value={sec(real.avgEngagementSec)}>
+          <Delta cur={real.avgEngagementSec} prev={realPrev.avgEngagementSec} goodWhen="up" />
         </Stat>
       </div>
 
-      <h3>소스/매체 상위 10 (7일)</h3>
+      <h3>소스/매체 상위 10</h3>
       <div className="scroll">
         <table className="data">
           <thead>
@@ -135,7 +136,7 @@ export function Ga4Panel({ g }: { g: Ga4Summary }) {
       {(split.suspectUsers > 0 || suspectSources.length > 0) && (
         <details className="excluded">
           <summary>
-            제외된 의심 트래픽 보기 · 7일 사용자 {n(split.suspectUsers)}명, 세션의 {pct(split.suspectShare)}
+            제외된 의심 트래픽 보기 · 사용자 {n(split.suspectUsers)}명, 세션의 {pct(split.suspectShare)}
           </summary>
           <p className="fine">
             데이터센터 도시이거나, 표본 5세션 이상인데 세션당 참여시간이 {LOW_ENGAGEMENT_SEC}초 미만인 국가·소스는 위 수치에서 뺐습니다.
@@ -143,7 +144,7 @@ export function Ga4Panel({ g }: { g: Ga4Summary }) {
           </p>
           <ul className="fine">
             <li>
-              전체(의심 포함) 활성 사용자 {n(g.d7.activeUsers)}명 · 세션 {n(g.d7.sessions)} · 28일 {n(g.d28.activeUsers)}명
+              전체(의심 포함) 활성 사용자 {n(g.total.activeUsers)}명 · 세션 {n(g.total.sessions)} · 직전 기간 {n(g.totalPrev.activeUsers)}명
             </li>
             {split.datacenterUsers > 0 && <li>데이터센터 도시 {n(split.datacenterUsers)}명</li>}
             {split.lowEngagementUsers > 0 && (
@@ -192,11 +193,11 @@ export function Ga4Panel({ g }: { g: Ga4Summary }) {
   );
 }
 
-export function RevenuePanel({ real, ga }: { real: RevenueSummary; ga: Ga4Summary | null }) {
+export function RevenuePanel({ real, ga, range }: { real: RevenueSummary; ga: Ga4Summary | null; range: DateRange }) {
   const gaOk = ga && ga.ok ? ga : null;
   const cmp = gaOk
     ? compareRevenue(
-        { purchases: gaOk.real7.purchases, revenue: gaOk.real7.revenue, currency: gaOk.currency, datacenterPurchases: 0 },
+        { purchases: gaOk.real.purchases, revenue: gaOk.real.revenue, currency: gaOk.currency, datacenterPurchases: 0 },
         real.ok ? { orders: real.orders, amount: real.amount, currency: real.currency } : null,
       )
     : null;
@@ -205,7 +206,7 @@ export function RevenuePanel({ real, ga }: { real: RevenueSummary; ga: Ga4Summar
       <div className="panel-head">
         <h2>실매출 (실제 결제 기준)</h2>
         <p className="meta">
-          최근 7일 (어제까지){real.ok ? ` · ${real.source === "polar" ? "Polar" : "Supabase purchase"}` : ""}
+          {range.label}{real.ok ? ` · ${real.source === "polar" ? "Polar" : "Supabase purchase"}` : ""}
         </p>
       </div>
       {real.ok ? (
@@ -214,10 +215,10 @@ export function RevenuePanel({ real, ga }: { real: RevenueSummary; ga: Ga4Summar
           <Stat label="실제 매출" value={real.amount === null ? "집계 안 함" : fmtValue(real.amount, "won", real.currency)} />
           {gaOk && (
             <>
-              <Stat label="GA purchase 건수" value={gaOk.real7.purchases} kind="count">
+              <Stat label="GA purchase 건수" value={gaOk.real.purchases} kind="count">
                 <Sub>봇 의심 제외 · 매출 근거로 쓰지 않음</Sub>
               </Stat>
-              <Stat label="GA purchase 값" value={fmtValue(gaOk.real7.revenue, "won", gaOk.currency || "KRW")} />
+              <Stat label="GA purchase 값" value={fmtValue(gaOk.real.revenue, "won", gaOk.currency || "KRW")} />
             </>
           )}
         </div>
@@ -240,15 +241,17 @@ export function RevenuePanel({ real, ga }: { real: RevenueSummary; ga: Ga4Summar
   );
 }
 
-export function AdsPanel({ a, ga }: { a: GoogleAdsSummary; ga: Ga4Summary | null }) {
+export function AdsPanel({ a, ga, range }: { a: GoogleAdsSummary; ga: Ga4Summary | null; range: DateRange }) {
   if (!a.ok) return <ErrorPanel title="구글 광고" reason={a.reason} />;
   const sum = (ds: typeof a.days) => ({
     clicks: ds.reduce((x, d) => x + d.clicks, 0),
     cost: ds.reduce((x, d) => x + d.cost, 0),
     impressions: ds.reduce((x, d) => x + d.impressions, 0),
   });
-  const cur = sum(a.days.slice(-7));
-  const prevDays = a.days.slice(-14, -7);
+  const n_ = range.days;
+  const curDays = a.days.slice(-n_);
+  const cur = sum(curDays);
+  const prevDays = a.days.slice(-2 * n_, -n_);
   const prev = prevDays.length ? sum(prevDays) : null;
   const k = (t: { clicks: number; cost: number; impressions: number }) => ({
     ...t,
@@ -265,7 +268,7 @@ export function AdsPanel({ a, ga }: { a: GoogleAdsSummary; ga: Ga4Summary | null
     <section className="panel">
       <div className="panel-head">
         <h2>구글 광고</h2>
-        <p className="meta">{a.accountName} · 최근 7일 (어제까지)</p>
+        <p className="meta">{a.accountName} · {range.label}</p>
       </div>
       <div className="kpis">
         <Stat label="비용" value={c.cost} kind="won" currency={a.currency} hero>
@@ -317,16 +320,16 @@ export function AdsPanel({ a, ga }: { a: GoogleAdsSummary; ga: Ga4Summary | null
       <div className="charts">
         <div>
           <h3>일별 비용</h3>
-          <TrendChart points={a.days.map((d) => ({ date: d.date, value: d.cost }))} kind="won" currency={a.currency} color="s1" name="비용" />
+          <TrendChart points={curDays.map((d) => ({ date: d.date, value: d.cost }))} kind="won" currency={a.currency} color="s1" name="비용" />
         </div>
         <div>
           <h3>일별 클릭</h3>
-          <TrendChart points={a.days.map((d) => ({ date: d.date, value: d.clicks }))} kind="count" color="s2" name="클릭" />
+          <TrendChart points={curDays.map((d) => ({ date: d.date, value: d.clicks }))} kind="count" color="s2" name="클릭" />
         </div>
       </div>
       {a.campaigns.length > 0 && (
         <>
-          <h3>캠페인별 (최근 7일, 비용 순)</h3>
+          <h3>캠페인별 (비용 순)</h3>
           <div className="scroll">
             <table className="data">
               <thead>

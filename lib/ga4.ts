@@ -1,6 +1,7 @@
 // GA4 Data API 읽기 전용 조회(scope: analytics.readonly). 토큰 값은 화면·로그에 내지 않는다.
 import { googleToken, logFailure, tokenFailureReason } from "@/lib/google";
 import { BRANDS, type BrandId } from "@/lib/platforms";
+import type { DateRange } from "@/lib/range";
 import { excludeSuspect, splitTraffic, flagSources, type FlaggedGeo, type FlaggedSource, type GeoRow, type SourceRow, type Totals, type TrafficSplit } from "@/lib/traffic";
 
 export type Ga4Totals = {
@@ -18,14 +19,14 @@ export type Ga4Summary =
   | {
       ok: true;
       currency: string;
-      d7: Ga4Totals; // 전체(의심 포함)
-      d28: Ga4Totals;
-      real7: Ga4Totals; // 의심 트래픽을 뺀 실수치 — 화면 기본값
-      real28: Ga4Totals;
+      total: Ga4Totals; // 선택 기간 전체(의심 포함)
+      totalPrev: Ga4Totals; // 직전 기간 전체
+      real: Ga4Totals; // 선택 기간, 의심 트래픽을 뺀 실수치 — 화면 기본값
+      realPrev: Ga4Totals; // 직전 기간 실수치
       sources: FlaggedSource[]; // 세션 순 상위(최대 25), 화면에는 의심 아닌 것 10개
-      geo: FlaggedGeo[]; // 7일
-      split: TrafficSplit; // 7일 기준 의심 트래픽 분리
-      split28: TrafficSplit;
+      geo: FlaggedGeo[]; // 선택 기간
+      split: TrafficSplit; // 선택 기간 의심 트래픽 분리
+      splitPrev: TrafficSplit;
       geoTruncated: boolean;
     }
   | { ok: false; reason: string };
@@ -33,8 +34,6 @@ export type Ga4Summary =
 type GaRow = { dimensionValues?: { value: string }[]; metricValues?: { value: string }[] };
 type GaResp = { rows?: GaRow[]; rowCount?: number; metadata?: { currencyCode?: string } };
 
-const RANGE_7 = { startDate: "7daysAgo", endDate: "yesterday" };
-const RANGE_28 = { startDate: "28daysAgo", endDate: "yesterday" };
 const GEO_LIMIT = 250;
 
 const num = (r: GaRow, i: number) => Number(r.metricValues?.[i]?.value ?? 0);
@@ -62,31 +61,33 @@ function totalsOf(r: GaRow | undefined): Ga4Totals {
 // 조회 결과를 화면용 요약으로 묶는다(데모 데이터도 같은 경로를 쓴다).
 export function assembleGa4(input: {
   currency: string;
-  d7: Ga4Totals;
-  d28: Ga4Totals;
+  total: Ga4Totals;
+  totalPrev: Ga4Totals;
   sources: SourceRow[];
-  geo7: GeoRow[];
-  geo28: GeoRow[];
+  geoCur: GeoRow[];
+  geoPrev: GeoRow[];
   geoTruncated: boolean;
 }): Ga4Summary {
-  const s7 = splitTraffic(input.geo7, input.d7.activeUsers, input.d7.sessions);
-  const s28 = splitTraffic(input.geo28, input.d28.activeUsers, input.d28.sessions);
+  const sCur = splitTraffic(input.geoCur, input.total.activeUsers, input.total.sessions);
+  const sPrev = splitTraffic(input.geoPrev, input.totalPrev.activeUsers, input.totalPrev.sessions);
   return {
     ok: true,
     currency: input.currency,
-    d7: input.d7,
-    d28: input.d28,
-    real7: withRates(excludeSuspect(input.d7, s7.split)),
-    real28: withRates(excludeSuspect(input.d28, s28.split)),
+    total: input.total,
+    totalPrev: input.totalPrev,
+    real: withRates(excludeSuspect(input.total, sCur.split)),
+    realPrev: withRates(excludeSuspect(input.totalPrev, sPrev.split)),
     sources: flagSources(input.sources),
-    geo: s7.flagged,
-    split: s7.split,
-    split28: s28.split,
+    geo: sCur.flagged,
+    split: sCur.split,
+    splitPrev: sPrev.split,
     geoTruncated: input.geoTruncated,
   };
 }
 
-export async function ga4Summary(brand: BrandId): Promise<Ga4Summary> {
+export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4Summary> {
+  const rCur = { startDate: range.from, endDate: range.to };
+  const rPrev = { startDate: range.prev.from, endDate: range.prev.to };
   const prefix = BRANDS.find((b) => b.id === brand)!.prefix;
   const refresh = process.env.GA_REFRESH_TOKEN;
   const propertyId = (process.env[`${prefix}_GA4_PROPERTY_ID`] ?? "").replace(/\D/g, "");
@@ -113,22 +114,22 @@ export async function ga4Summary(brand: BrandId): Promise<Ga4Summary> {
         orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
         limit: GEO_LIMIT,
       });
-    const [ov, src, geo, geo28] = await Promise.all([
+    const [ov, src, geo, geoPrev] = await Promise.all([
       run({
-        dateRanges: [RANGE_7, RANGE_28],
+        dateRanges: [rCur, rPrev],
         metrics: ["activeUsers", "sessions", "engagedSessions", "userEngagementDuration", "ecommercePurchases", "purchaseRevenue"].map((name) => ({ name })),
       }),
       run({
-        dateRanges: [RANGE_7],
+        dateRanges: [rCur],
         dimensions: [{ name: "sessionSourceMedium" }],
         metrics: ["sessions", "activeUsers", "engagedSessions", "userEngagementDuration"].map((name) => ({ name })),
         orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
         limit: 25,
       }),
-      geoReport(RANGE_7),
-      geoReport(RANGE_28),
+      geoReport(rCur),
+      geoReport(rPrev),
     ]);
-    const bad = [ov, src, geo, geo28].find((r) => !r.ok);
+    const bad = [ov, src, geo, geoPrev].find((r) => !r.ok);
     if (bad) {
       const err = ((await bad.json().catch(() => ({}))) as { error?: { status?: string; message?: string } }).error;
       const code = err?.status ?? `HTTP ${bad.status}`;
@@ -149,8 +150,8 @@ export async function ga4Summary(brand: BrandId): Promise<Ga4Summary> {
     }
     const ovJson = (await ov.json()) as GaResp;
     const byRange = (key: string) => ovJson.rows?.find((r) => r.dimensionValues?.[0]?.value === key);
-    const d7 = totalsOf(byRange("date_range_0"));
-    const d28 = totalsOf(byRange("date_range_1"));
+    const total = totalsOf(byRange("date_range_0"));
+    const totalPrev = totalsOf(byRange("date_range_1"));
 
     const sources: SourceRow[] = (((await src.json()) as GaResp).rows ?? []).map((r) => ({
       sourceMedium: r.dimensionValues?.[0]?.value ?? "(알 수 없음)",
@@ -172,15 +173,15 @@ export async function ga4Summary(brand: BrandId): Promise<Ga4Summary> {
         engagedSessions: num(r, 5),
       }));
     const geoJson = (await geo.json()) as GaResp;
-    const geo28Json = (await geo28.json()) as GaResp;
+    const geoPrevJson = (await geoPrev.json()) as GaResp;
     return assembleGa4({
       currency: ovJson.metadata?.currencyCode ?? "",
-      d7,
-      d28,
+      total,
+      totalPrev,
       sources,
-      geo7: toGeo(geoJson),
-      geo28: toGeo(geo28Json),
-      geoTruncated: [geoJson, geo28Json].some((j) => (j.rowCount ?? j.rows?.length ?? 0) > GEO_LIMIT),
+      geoCur: toGeo(geoJson),
+      geoPrev: toGeo(geoPrevJson),
+      geoTruncated: [geoJson, geoPrevJson].some((j) => (j.rowCount ?? j.rows?.length ?? 0) > GEO_LIMIT),
     });
   } catch (e) {
     logFailure("ga4", brand, `network ${e instanceof Error ? e.message : String(e)}`);

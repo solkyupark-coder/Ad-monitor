@@ -1,42 +1,24 @@
 // 실제 결제 기준 매출(읽기 전용). 하우스케이퍼: Polar 주문, 토포제네시스: Supabase purchase 테이블.
 // 토큰·키 값은 화면·로그에 내지 않는다.
 import type { BrandId } from "@/lib/platforms";
+import { rangeInstants, type DateRange } from "@/lib/range";
 
 export type RevenueSummary =
   | { ok: true; source: "polar" | "supabase"; currency: string; orders: number; amount: number | null; truncated: boolean }
   | { ok: false; reason: string };
 
-const DAY = 86400000;
 const ZERO_DECIMAL = new Set(["KRW", "JPY", "VND", "CLP", "ISK", "UGX", "XAF", "XOF"]);
-
-// GA 'yesterday' 기준과 맞추기 위해 [오늘 0시-7일, 오늘 0시) 구간을 쓴다. 날짜 경계는 DASHBOARD_UTC_OFFSET_HOURS(기본 9).
-const offsetMs = () => {
-  const h = Number(process.env.DASHBOARD_UTC_OFFSET_HOURS ?? 9);
-  return (Number.isFinite(h) ? h : 9) * 3600000;
-};
-
-// 어제 날짜(YYYY-MM-DD, 날짜 경계 시간대 기준). 광고 일별 데이터의 끝 날짜로 쓴다.
-export function yesterdayDate(now = Date.now()): string {
-  const today = Math.floor((now + offsetMs()) / DAY) * DAY;
-  return new Date(today - DAY).toISOString().slice(0, 10);
-}
-
-export function revenueWindow(now = Date.now(), offsetHours?: number) {
-  const off = offsetHours === undefined ? offsetMs() : (Number.isFinite(offsetHours) ? offsetHours : 9) * 3600000;
-  const today = Math.floor((now + off) / DAY) * DAY - off;
-  return { since: new Date(today - 7 * DAY), until: new Date(today) };
-}
 
 type PolarOrder = { created_at?: string; status?: string; paid?: boolean; net_amount?: number; total_amount?: number; currency?: string };
 
-async function polar(): Promise<RevenueSummary> {
+async function polar(range: DateRange): Promise<RevenueSummary> {
   const token = process.env.POLAR_ACCESS_TOKEN;
   if (!token) return { ok: false, reason: "자격증명 없음" };
-  const { since, until } = revenueWindow();
+  const { since, until } = rangeInstants(range);
   const mine: PolarOrder[] = [];
   let truncated = false;
   try {
-    for (let page = 1; page <= 10; page++) {
+    for (let page = 1; page <= 20; page++) {
       const res = await fetch(`https://api.polar.sh/v1/orders/?limit=100&page=${page}&sorting=-created_at`, {
         headers: { authorization: `Bearer ${token}` },
         next: { revalidate: 600 },
@@ -53,7 +35,7 @@ async function polar(): Promise<RevenueSummary> {
         else if (t < until.getTime()) mine.push(o);
       }
       if (reachedOld || items.length < 100) break;
-      if (page === 10) truncated = true;
+      if (page === 20) truncated = true;
     }
   } catch {
     return { ok: false, reason: "Polar 조회 실패(네트워크)" };
@@ -66,7 +48,7 @@ async function polar(): Promise<RevenueSummary> {
   return { ok: true, source: "polar", currency, orders: paid.length, amount, truncated };
 }
 
-async function supabasePurchases(prefix: string): Promise<RevenueSummary> {
+async function supabasePurchases(prefix: string, range: DateRange): Promise<RevenueSummary> {
   const url = (process.env[`${prefix}_SUPABASE_URL`] ?? "").replace(/\/+$/, "");
   const key = process.env[`${prefix}_SUPABASE_READONLY_KEY`];
   if (!url || !key) return { ok: false, reason: "자격증명 없음" };
@@ -77,7 +59,7 @@ async function supabasePurchases(prefix: string): Promise<RevenueSummary> {
   const divisor = Number(process.env[`${prefix}_PURCHASE_AMOUNT_DIVISOR`] || 1) || 1;
   // PostgREST 식별자는 영문·숫자·밑줄만 허용해 쿼리 조작을 막는다.
   if (![table, dateCol, amountCol].every((s) => s === "" || /^[A-Za-z0-9_]+$/.test(s))) return { ok: false, reason: "테이블·컬럼 이름 설정이 올바르지 않습니다" };
-  const { since, until } = revenueWindow();
+  const { since, until } = rangeInstants(range);
   const select = amountCol ? `${dateCol},${amountCol}` : dateCol;
   const q = `select=${select}&${dateCol}=gte.${since.toISOString()}&${dateCol}=lt.${until.toISOString()}&order=${dateCol}.desc&limit=1000`;
   try {
@@ -96,6 +78,6 @@ async function supabasePurchases(prefix: string): Promise<RevenueSummary> {
   }
 }
 
-export async function revenueSummary(brand: BrandId): Promise<RevenueSummary> {
-  return brand === "houscaper" ? polar() : supabasePurchases("TOPOGENESIS");
+export async function revenueSummary(brand: BrandId, range: DateRange): Promise<RevenueSummary> {
+  return brand === "houscaper" ? polar(range) : supabasePurchases("TOPOGENESIS", range);
 }

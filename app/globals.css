@@ -25,6 +25,15 @@ h3 { font-size: 13px; margin: 24px 0 8px; color: var(--ink2); font-weight: 600; 
 .tabs a { padding: 8px 16px; border: 1px solid var(--border); border-radius: 999px; color: var(--ink2); text-decoration: none; font-size: 14px; background: var(--surface); }
 .tabs a.on { color: var(--surface); background: var(--ink); border-color: var(--ink); }
 .sub { color: var(--ink2); font-size: 14px; margin: 12px 0 0; }
+.range { margin-top: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.range .fine { flex-basis: 100%; margin: 0; }
+.presets { display: flex; gap: 4px; padding: 3px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); }
+.presets a { padding: 5px 12px; border-radius: 999px; color: var(--ink2); text-decoration: none; font-size: 13px; font-variant-numeric: tabular-nums; }
+.presets a.on { background: var(--ink); color: var(--surface); }
+.custom { display: flex; align-items: center; gap: 6px; padding: 3px 3px 3px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); font-size: 13px; color: var(--ink2); }
+.custom.on { border-color: var(--ink); }
+.custom input { border: 0; background: transparent; color: var(--ink); font: inherit; padding: 4px 0; color-scheme: light dark; }
+.custom button { padding: 5px 12px; border: 0; border-radius: 999px; background: var(--ink); color: var(--surface); font: inherit; font-weight: 600; cursor: pointer; }
 .demo { margin: 12px 0 0; padding: 8px 12px; border: 1px dashed var(--warn); color: var(--warn); border-radius: 8px; font-size: 13px; }
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px; margin-top: 16px; }
 .panel-head { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; justify-content: space-between; }

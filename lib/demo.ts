@@ -1,17 +1,20 @@
 // 화면 확인용 가짜 데이터. DASHBOARD_DEMO=1 일 때만 쓰이며, 화면에 '데모 데이터'라고 표시된다. 실제 수치가 아니다.
 import type { MetaSummary } from "@/lib/meta";
 import type { YoutubeSummary } from "@/lib/youtube";
+import { eachDay, type DateRange } from "@/lib/range";
 
 export const demoOn = () => process.env.DASHBOARD_DEMO === "1";
 
-export function demoMeta(): MetaSummary {
-  const base = new Date("2026-09-20T00:00:00Z").getTime();
-  const days = Array.from({ length: 14 }, (_, i) => {
-    const wave = 1 + 0.35 * Math.sin(i / 2) + (i > 6 ? 0.25 : 0);
+// 직전 기간 + 조회 기간 날짜(비교용 일별 행).
+const demoDays = (r: DateRange) => eachDay(r.prev.from, r.to);
+
+export function demoMeta(r: DateRange): MetaSummary {
+  const days = demoDays(r).map((date, i) => {
+    const wave = 1 + 0.35 * Math.sin(i / 2) + (i >= r.days ? 0.25 : 0);
     const spend = Math.round(4800 * wave);
     const impressions = Math.round(2100 * wave * (1 + 0.1 * Math.cos(i)));
     return {
-      date: new Date(base + i * 86400000).toISOString().slice(0, 10),
+      date,
       spend,
       impressions,
       clicks: Math.round(impressions * (0.046 + 0.006 * Math.sin(i))),
@@ -57,7 +60,8 @@ import { assembleGa4, withRates, type Ga4Summary } from "@/lib/ga4";
 import type { GoogleAdsSummary } from "@/lib/googleads";
 import type { RevenueSummary } from "@/lib/revenue";
 
-export function demoGa4(): Ga4Summary {
+export function demoGa4(r: DateRange): Ga4Summary {
+  const k = r.days / 7;
   const g = (country: string, city: string, u: number, s: number, avg: number, p = 0): GeoRow => ({
     country, city, activeUsers: u, sessions: s, engagementSec: avg * s, purchases: p, revenue: p * 6800,
     engagedSessions: avg < 5 ? 0 : Math.round(s * 0.55),
@@ -77,17 +81,25 @@ export function demoGa4(): Ga4Summary {
     withRates({ activeUsers: Math.round(900 * k), sessions: Math.round(1100 * k), engagedSessions: Math.round(190 * k), engagementSec: 6800 * k, purchases: Math.round(3 * k), revenue: 20327 * k });
   const scale = (rows: GeoRow[], k: number): GeoRow[] =>
     rows.map((r) => ({ ...r, activeUsers: Math.round(r.activeUsers * k), sessions: Math.round(r.sessions * k), engagedSessions: Math.round(r.engagedSessions * k), engagementSec: r.engagementSec * k, purchases: Math.round(r.purchases * k), revenue: r.revenue * k }));
-  return assembleGa4({ currency: "KRW", d7: totals(1), d28: totals(2.6), sources: src, geo7: geo, geo28: scale(geo, 2.6), geoTruncated: false });
+  return assembleGa4({
+    currency: "KRW",
+    total: totals(k),
+    totalPrev: totals(k * 0.85),
+    sources: src.map((x) => ({ ...x, sessions: Math.round(x.sessions * k), activeUsers: Math.round(x.activeUsers * k), engagedSessions: Math.round(x.engagedSessions * k), engagementSec: x.engagementSec * k })),
+    geoCur: scale(geo, k),
+    geoPrev: scale(geo, k * 0.85),
+    geoTruncated: false,
+  });
 }
 
-export function demoRevenue(): RevenueSummary {
+export function demoRevenue(_r: DateRange): RevenueSummary {
   return { ok: true, source: "polar", currency: "USD", orders: 0, amount: 0, truncated: false };
 }
 
-export function demoAds(): GoogleAdsSummary {
-  const days = Array.from({ length: 14 }, (_, i) => {
+export function demoAds(r: DateRange): GoogleAdsSummary {
+  const days = demoDays(r).map((date, i) => {
     const wave = 1 + 0.3 * Math.sin(i / 2.2);
-    return { date: new Date(Date.UTC(2026, 8, 21 + i)).toISOString().slice(0, 10), clicks: Math.round(22 * wave), cost: Math.round(9000 * wave), impressions: Math.round(700 * wave) };
+    return { date, clicks: Math.round(22 * wave), cost: Math.round(9000 * wave), impressions: Math.round(700 * wave) };
   });
   return {
     ok: true,

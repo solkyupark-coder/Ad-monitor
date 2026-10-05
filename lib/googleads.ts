@@ -3,7 +3,7 @@
 // developer-token 헤더를 보내지 않는다(이후 메이저 버전에서는 거절될 예정).
 import { googleToken, logFailure, tokenFailureReason } from "@/lib/google";
 import { BRANDS, type BrandId } from "@/lib/platforms";
-import { yesterdayDate } from "@/lib/revenue";
+import { eachDay, type DateRange } from "@/lib/range";
 
 export type AdsDay = { date: string; clicks: number; cost: number; impressions: number };
 export type AdsCampaign = { name: string; clicks: number; cost: number; impressions: number };
@@ -22,14 +22,10 @@ type AdsResp = {
   error?: { status?: string; message?: string; details?: { errors?: { errorCode?: Record<string, string>; message?: string }[] }[] };
 };
 
-// 활동이 없는 날은 행이 오지 않으므로, 어제까지 14일을 0으로 채워 날짜 기준으로 자를 수 있게 한다.
-function fillDays(rows: AdsDay[]): AdsDay[] {
+// 활동이 없는 날은 행이 오지 않으므로, [직전 기간 시작, 기간 끝]을 0으로 채워 날짜 기준으로 자를 수 있게 한다.
+function fillDays(rows: AdsDay[], range: DateRange): AdsDay[] {
   const by = new Map(rows.map((d) => [d.date, d]));
-  const end = new Date(`${yesterdayDate()}T00:00:00Z`).getTime();
-  return Array.from({ length: 14 }, (_, i) => {
-    const date = new Date(end - (13 - i) * 86400000).toISOString().slice(0, 10);
-    return by.get(date) ?? { date, clicks: 0, cost: 0, impressions: 0 };
-  });
+  return eachDay(range.prev.from, range.to).map((date) => by.get(date) ?? { date, clicks: 0, cost: 0, impressions: 0 });
 }
 
 const digits = (s: string | undefined) => (s ?? "").replace(/\D/g, "");
@@ -44,7 +40,7 @@ function errorCode(body: AdsResp): string | undefined {
   return code ? Object.values(code)[0] : undefined;
 }
 
-export async function googleAdsSummary(brand: BrandId): Promise<GoogleAdsSummary> {
+export async function googleAdsSummary(brand: BrandId, range: DateRange): Promise<GoogleAdsSummary> {
   const prefix = BRANDS.find((b) => b.id === brand)!.prefix;
   const refresh = process.env.GOOGLE_ADS_REFRESH_TOKEN;
   const customerId = digits(process.env[`${prefix}_GOOGLE_ADS_CUSTOMER_ID`]);
@@ -72,8 +68,9 @@ export async function googleAdsSummary(brand: BrandId): Promise<GoogleAdsSummary
       });
     const [infoRes, dayRes, campRes] = await Promise.all([
       search("SELECT customer.descriptive_name, customer.currency_code FROM customer LIMIT 1"),
-      search("SELECT segments.date, metrics.clicks, metrics.cost_micros, metrics.impressions FROM customer WHERE segments.date DURING LAST_14_DAYS ORDER BY segments.date"),
-      search("SELECT campaign.name, metrics.clicks, metrics.cost_micros, metrics.impressions FROM campaign WHERE segments.date DURING LAST_7_DAYS AND metrics.impressions > 0 ORDER BY metrics.cost_micros DESC LIMIT 10"),
+      // 날짜는 lib/range 가 형식을 검증한 YYYY-MM-DD 만 들어온다.
+      search(`SELECT segments.date, metrics.clicks, metrics.cost_micros, metrics.impressions FROM customer WHERE segments.date BETWEEN '${range.prev.from}' AND '${range.to}' ORDER BY segments.date`),
+      search(`SELECT campaign.name, metrics.clicks, metrics.cost_micros, metrics.impressions FROM campaign WHERE segments.date BETWEEN '${range.from}' AND '${range.to}' AND metrics.impressions > 0 ORDER BY metrics.cost_micros DESC LIMIT 10`),
     ]);
     const bad = [infoRes, dayRes].find((r) => !r.ok);
     if (bad) {
@@ -100,7 +97,7 @@ export async function googleAdsSummary(brand: BrandId): Promise<GoogleAdsSummary
       return { ok: false, reason: `조회 실패 — 고객 ID ${customerId}와 권한을 확인하세요 (${tag})` };
     }
     const info = ((await infoRes.json()) as AdsResp).results?.[0]?.customer;
-    const days = fillDays((((await dayRes.json()) as AdsResp).results ?? []).map((r) => ({ date: r.segments?.date ?? "", ...metric(r) })).filter((d) => d.date));
+    const days = fillDays((((await dayRes.json()) as AdsResp).results ?? []).map((r) => ({ date: r.segments?.date ?? "", ...metric(r) })).filter((d) => d.date), range);
     const campaigns = campRes.ok
       ? (((await campRes.json()) as AdsResp).results ?? []).map((r) => ({ name: r.campaign?.name ?? "(이름 없음)", ...metric(r) }))
       : [];

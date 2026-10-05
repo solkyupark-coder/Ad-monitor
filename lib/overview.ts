@@ -1,4 +1,4 @@
-// '이번 주 한눈에' 퍼널 계산(순수 함수). 광고 노출 → 광고 클릭 → 사이트 실사용자(봇 제외) → 실제 결제.
+// '한눈에' 퍼널 계산(순수 함수). 광고 노출 → 광고 클릭 → 사이트 실사용자(봇 제외) → 실제 결제.
 type Day = { impressions: number; clicks: number };
 type SpendDay = Day & { spend?: number; cost?: number };
 
@@ -12,18 +12,19 @@ export type Overview = {
   costPerOrder: number | null;
 };
 
-const last7 = <T,>(days: T[]) => days.slice(-7);
 const sum = <T,>(xs: T[], f: (x: T) => number) => xs.reduce((a, x) => a + f(x), 0);
 
 export function buildOverview(input: {
   meta: { days: SpendDay[]; currency: string } | null;
   ads: { days: SpendDay[]; currency: string } | null;
-  realUsers: number | null; // GA4 봇 제외 7일 활성 사용자
-  orders: number | null; // 실제 결제 건수(7일)
+  realUsers: number | null; // GA4 봇 제외 조회 기간 활성 사용자
+  orders: number | null; // 조회 기간 실제 결제 건수
+  days: number; // 조회 기간 일수(광고 일별 행의 마지막 N일을 쓴다)
 }): Overview {
+  const lastN = <T,>(days: T[]) => days.slice(-input.days);
   const sources = [
-    input.meta && { name: "메타", days: last7(input.meta.days), currency: input.meta.currency, spend: (d: SpendDay) => d.spend ?? 0 },
-    input.ads && { name: "구글 광고", days: last7(input.ads.days), currency: input.ads.currency, spend: (d: SpendDay) => d.cost ?? 0 },
+    input.meta && { name: "메타", days: lastN(input.meta.days), currency: input.meta.currency, spend: (d: SpendDay) => d.spend ?? 0 },
+    input.ads && { name: "구글 광고", days: lastN(input.ads.days), currency: input.ads.currency, spend: (d: SpendDay) => d.cost ?? 0 },
   ].filter((s): s is NonNullable<typeof s> => Boolean(s));
 
   const currencies = [...new Set(sources.map((s) => s.currency))];

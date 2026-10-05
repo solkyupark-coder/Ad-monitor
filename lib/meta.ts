@@ -1,5 +1,6 @@
 // 메타 광고 읽기 전용 조회(Marketing API insights). 토큰·ID 값은 화면·로그에 내지 않는다.
 import { BRANDS, type BrandId } from "@/lib/platforms";
+import { eachDay, type DateRange } from "@/lib/range";
 
 export type MetaDay = { date: string; spend: number; impressions: number; clicks: number };
 export type MetaCampaign = { name: string; spend: number; impressions: number; clicks: number };
@@ -28,36 +29,24 @@ export function totals(days: MetaDay[]): MetaTotals {
   };
 }
 
-// 최근 7일과 그 앞 7일을 나눈다. 앞 구간이 비면 null.
-export function weekSplit(days: MetaDay[]): { cur: MetaTotals; prev: MetaTotals | null } {
-  const cur = days.slice(-7);
-  const prev = days.slice(-14, -7);
+// 선택 기간(마지막 n일)과 그 직전 n일을 나눈다. 앞 구간이 비면 null.
+export function periodSplit(days: MetaDay[], n: number): { cur: MetaTotals; prev: MetaTotals | null } {
+  const cur = days.slice(-n);
+  const prev = days.slice(-2 * n, -n);
   return { cur: totals(cur), prev: prev.length ? totals(prev) : null };
 }
 
-function fillDays(rows: Row[]): MetaDay[] {
+// 지출이 없는 날은 행이 오지 않으므로 [직전 기간 시작, 기간 끝]을 0으로 채운다.
+function fillDays(rows: Row[], range: DateRange): MetaDay[] {
   const byDate = new Map<string, MetaDay>();
   for (const r of rows) {
     if (!r.date_start) continue;
-    byDate.set(r.date_start, {
-      date: r.date_start,
-      spend: Number(r.spend ?? 0),
-      impressions: Number(r.impressions ?? 0),
-      clicks: Number(r.clicks ?? 0),
-    });
+    byDate.set(r.date_start, { date: r.date_start, spend: Number(r.spend ?? 0), impressions: Number(r.impressions ?? 0), clicks: Number(r.clicks ?? 0) });
   }
-  const dates = [...byDate.keys()].sort();
-  if (!dates.length) return [];
-  const end = new Date(`${dates[dates.length - 1]}T00:00:00Z`);
-  const out: MetaDay[] = [];
-  for (let i = 13; i >= 0; i--) {
-    const d = new Date(end.getTime() - i * 86400000).toISOString().slice(0, 10);
-    out.push(byDate.get(d) ?? { date: d, spend: 0, impressions: 0, clicks: 0 });
-  }
-  return out;
+  return eachDay(range.prev.from, range.to).map((d) => byDate.get(d) ?? { date: d, spend: 0, impressions: 0, clicks: 0 });
 }
 
-export async function metaSummary(brand: BrandId): Promise<MetaSummary> {
+export async function metaSummary(brand: BrandId, range: DateRange): Promise<MetaSummary> {
   const prefix = BRANDS.find((b) => b.id === brand)!.prefix;
   const token = process.env[`${prefix}_META_ACCESS_TOKEN`];
   const rawId = process.env[`${prefix}_META_AD_ACCOUNT_ID`];
@@ -68,8 +57,8 @@ export async function metaSummary(brand: BrandId): Promise<MetaSummary> {
   try {
     const [infoRes, dayRes, campRes] = await Promise.all([
       get("?fields=name,currency"),
-      get("/insights?fields=spend,impressions,clicks&date_preset=last_14d&time_increment=1&limit=31"),
-      get("/insights?fields=campaign_name,spend,impressions,clicks&level=campaign&date_preset=last_7d&limit=50"),
+      get(`/insights?fields=spend,impressions,clicks&time_increment=1&limit=1000&time_range=${encodeURIComponent(JSON.stringify({ since: range.prev.from, until: range.to }))}`),
+      get(`/insights?fields=campaign_name,spend,impressions,clicks&level=campaign&limit=50&time_range=${encodeURIComponent(JSON.stringify({ since: range.from, until: range.to }))}`),
     ]);
     const failed = [infoRes, dayRes].find((r) => !r.ok);
     if (failed) {
@@ -79,7 +68,7 @@ export async function metaSummary(brand: BrandId): Promise<MetaSummary> {
       return { ok: false, reason: "조회 실패 — 광고 계정 ID와 토큰 권한을 확인하세요" };
     }
     const info = (await infoRes.json()) as { name?: string; currency?: string };
-    const days = fillDays(((await dayRes.json()) as { data?: Row[] }).data ?? []);
+    const days = fillDays(((await dayRes.json()) as { data?: Row[] }).data ?? [], range);
     const campaigns = campRes.ok
       ? (((await campRes.json()) as { data?: Row[] }).data ?? [])
           .map((r) => ({

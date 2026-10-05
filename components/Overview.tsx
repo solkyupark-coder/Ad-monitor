@@ -1,18 +1,19 @@
 import { fmtValue } from "@/lib/format";
 import { logWidth, type Overview } from "@/lib/overview";
 import { Stat } from "@/components/ui";
+import type { DateRange } from "@/lib/range";
 
 const n = (v: number) => fmtValue(v, "count");
 const pct = (r: number) => (r === 0 ? "0%" : r >= 0.1 ? `${(r * 100).toFixed(0)}%` : r >= 0.001 ? `${(r * 100).toFixed(1)}%` : `${(r * 100).toFixed(2)}%`);
 
-export function OverviewPanel({ o }: { o: Overview }) {
+export function OverviewPanel({ o, range }: { o: Overview; range: DateRange }) {
   const max = Math.max(...o.steps.map((s) => s.value ?? 0), 1);
   const money = (v: number | null, empty: string) => (v === null ? empty : fmtValue(v, "won", o.currency));
   return (
     <section className="panel overview">
       <div className="panel-head">
-        <h2>이번 주 한눈에</h2>
-        <p className="meta">최근 7일 (어제까지) · 막대 길이는 로그 눈금</p>
+        <h2>한눈에 보기</h2>
+        <p className="meta">{range.label} · 막대 길이는 로그 눈금</p>
       </div>
       <div className="kpis">
         <Stat label="총 광고비" value={money(o.spend, "-")}>

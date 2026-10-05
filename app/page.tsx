@@ -1,6 +1,6 @@
 import { BRANDS, statusFor, type BrandId, type PlatformId } from "@/lib/platforms";
 import { youtubeSummary, type YoutubeSummary } from "@/lib/youtube";
-import { metaSummary, weekSplit, type MetaSummary } from "@/lib/meta";
+import { metaSummary, periodSplit, type MetaSummary } from "@/lib/meta";
 import { ga4Summary } from "@/lib/ga4";
 import { googleAdsSummary } from "@/lib/googleads";
 import { revenueSummary } from "@/lib/revenue";
@@ -11,10 +11,11 @@ import { BarList, Delta, Stat } from "@/components/ui";
 import { AdsPanel, Ga4Panel, RevenuePanel } from "@/components/panels";
 import { OverviewPanel } from "@/components/Overview";
 import { buildOverview } from "@/lib/overview";
+import { parseRange, PRESETS, rangeQuery, yesterdayDate, type DateRange } from "@/lib/range";
 
 export const dynamic = "force-dynamic";
 
-function MetaPanel({ m }: { m: MetaSummary }) {
+function MetaPanel({ m, range }: { m: MetaSummary; range: DateRange }) {
   if (!m.ok) {
     return (
       <section className="panel">
@@ -23,9 +24,8 @@ function MetaPanel({ m }: { m: MetaSummary }) {
       </section>
     );
   }
-  const { cur, prev } = weekSplit(m.days);
-  const last7 = m.days.slice(-7);
-  const period = last7.length ? `${fmtDate(last7[0].date)} – ${fmtDate(last7[last7.length - 1].date)}` : "";
+  const { cur, prev } = periodSplit(m.days, range.days);
+  const curDays = m.days.slice(-range.days);
   const maxSpend = Math.max(...m.campaigns.map((c) => c.spend), 1);
   const cur$ = (n: number) => fmtValue(n, "won", m.currency);
   return (
@@ -33,7 +33,7 @@ function MetaPanel({ m }: { m: MetaSummary }) {
       <div className="panel-head">
         <h2>메타 광고</h2>
         <p className="meta">
-          {m.accountName} · 최근 7일 {period} (어제까지)
+          {m.accountName} · {range.label}
         </p>
       </div>
       <div className="kpis">
@@ -59,16 +59,16 @@ function MetaPanel({ m }: { m: MetaSummary }) {
       <div className="charts">
         <div>
           <h3>일별 지출</h3>
-          <TrendChart points={m.days.map((d) => ({ date: d.date, value: d.spend }))} kind="won" currency={m.currency} color="s1" name="지출" />
+          <TrendChart points={curDays.map((d) => ({ date: d.date, value: d.spend }))} kind="won" currency={m.currency} color="s1" name="지출" />
         </div>
         <div>
           <h3>일별 클릭</h3>
-          <TrendChart points={m.days.map((d) => ({ date: d.date, value: d.clicks }))} kind="count" color="s2" name="클릭" />
+          <TrendChart points={curDays.map((d) => ({ date: d.date, value: d.clicks }))} kind="count" color="s2" name="클릭" />
         </div>
       </div>
       {m.campaigns.length > 0 && (
         <>
-          <h3>캠페인별 (최근 7일, 지출 순)</h3>
+          <h3>캠페인별 (지출 순)</h3>
           <div className="scroll">
             <table className="data">
               <thead>
@@ -149,25 +149,54 @@ function YoutubePanel({ y, brand }: { y: YoutubeSummary; brand: BrandId }) {
   );
 }
 
-export default async function Home({ searchParams }: { searchParams: Promise<{ brand?: string }> }) {
-  const { brand: q } = await searchParams;
+function RangePicker({ brand, range }: { brand: BrandId; range: DateRange }) {
+  return (
+    <div className="range">
+      <nav className="presets" aria-label="조회 기간">
+        {PRESETS.map((n) => (
+          <a key={n} href={`/?brand=${brand}&range=${n}`} className={range.preset === n ? "on" : ""}>
+            {n}일
+          </a>
+        ))}
+      </nav>
+      <form method="get" action="/" className={range.preset ? "custom" : "custom on"}>
+        <input type="hidden" name="brand" value={brand} />
+        <input type="date" name="from" defaultValue={range.from} max={yesterdayDate()} aria-label="시작일" required />
+        <span>–</span>
+        <input type="date" name="to" defaultValue={range.to} max={yesterdayDate()} aria-label="종료일" required />
+        <button type="submit">적용</button>
+      </form>
+      <p className="fine">
+        {range.label} · 비교: 직전 {range.days}일 ({fmtDate(range.prev.from)} – {fmtDate(range.prev.to)})
+      </p>
+    </div>
+  );
+}
+
+type Query = { brand?: string; range?: string; from?: string; to?: string };
+
+export default async function Home({ searchParams }: { searchParams: Promise<Query> }) {
+  const sp = await searchParams;
+  const q = sp.brand;
   const brand: BrandId = BRANDS.some((b) => b.id === q) ? (q as BrandId) : "houscaper";
+  const range = parseRange(sp);
   const demo = demoOn();
   const statuses = statusFor(brand);
   const DEMO_ON: PlatformId[] = ["meta", "youtube", "ga4", "revenue", "google_ads"];
   const isOn = (id: PlatformId) => (demo ? DEMO_ON.includes(id) : statuses.find((s) => s.platform.id === id)?.connected);
   const [meta, yt, ga, rev, ads] = await Promise.all([
-    isOn("meta") ? (demo ? demoMeta() : metaSummary(brand)) : null,
+    isOn("meta") ? (demo ? demoMeta(range) : metaSummary(brand, range)) : null,
     isOn("youtube") ? (demo ? demoYoutube() : youtubeSummary(brand)) : null,
-    isOn("ga4") ? (demo ? demoGa4() : ga4Summary(brand)) : null,
-    isOn("revenue") ? (demo ? demoRevenue() : revenueSummary(brand)) : null,
-    isOn("google_ads") ? (demo ? demoAds() : googleAdsSummary(brand)) : null,
+    isOn("ga4") ? (demo ? demoGa4(range) : ga4Summary(brand, range)) : null,
+    isOn("revenue") ? (demo ? demoRevenue(range) : revenueSummary(brand, range)) : null,
+    isOn("google_ads") ? (demo ? demoAds(range) : googleAdsSummary(brand, range)) : null,
   ]);
   const overview = buildOverview({
     meta: meta && meta.ok ? { days: meta.days, currency: meta.currency } : null,
     ads: ads && ads.ok ? { days: ads.days, currency: ads.currency } : null,
-    realUsers: ga && ga.ok ? ga.real7.activeUsers : null,
+    realUsers: ga && ga.ok ? ga.real.activeUsers : null,
     orders: rev && rev.ok ? rev.orders : null,
+    days: range.days,
   });
   const connectedCount = statuses.filter((s) => isOn(s.platform.id)).length;
   const pending = statuses.filter((s) => !isOn(s.platform.id));
@@ -177,7 +206,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ b
         <h1>광고 모니터링</h1>
         <nav className="tabs">
           {BRANDS.map((b) => (
-            <a key={b.id} href={`/?brand=${b.id}`} className={b.id === brand ? "on" : ""}>
+            <a key={b.id} href={`/?brand=${b.id}&${rangeQuery(range)}`} className={b.id === brand ? "on" : ""}>
               {b.label}
             </a>
           ))}
@@ -186,12 +215,13 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ b
       <p className="sub">
         {connectedCount} / {statuses.length} 플랫폼 연결됨 · 수치는 약 10분 간격으로 갱신됩니다.
       </p>
+      <RangePicker brand={brand} range={range} />
       {demo && <p className="demo">데모 데이터입니다. 실제 수치가 아닙니다.</p>}
-      <OverviewPanel o={overview} />
-      {rev && <RevenuePanel real={rev} ga={ga} />}
-      {ga && <Ga4Panel g={ga} />}
-      {meta && <MetaPanel m={meta} />}
-      {ads && <AdsPanel a={ads} ga={ga} />}
+      <OverviewPanel o={overview} range={range} />
+      {rev && <RevenuePanel real={rev} ga={ga} range={range} />}
+      {ga && <Ga4Panel g={ga} range={range} />}
+      {meta && <MetaPanel m={meta} range={range} />}
+      {ads && <AdsPanel a={ads} ga={ga} range={range} />}
       {yt && <YoutubePanel y={yt} brand={brand} />}
       {pending.length > 0 && (
         <>

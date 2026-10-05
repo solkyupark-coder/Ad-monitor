@@ -1,5 +1,5 @@
 // 화면 확인용 가짜 데이터. DASHBOARD_DEMO=1 일 때만 쓰이며, 화면에 '데모 데이터'라고 표시된다. 실제 수치가 아니다.
-import type { MetaSummary } from "@/lib/meta";
+import type { MetaCampaign, MetaSummary } from "@/lib/meta";
 import type { YoutubeSummary } from "@/lib/youtube";
 import { eachDay, type DateRange } from "@/lib/range";
 
@@ -37,7 +37,14 @@ export function demoMeta(r: DateRange): MetaSummary {
       { name: "[데모] 리타겟팅 · 전환", spend: 11800, impressions: 5100, clicks: 260 },
       { name: "[데모] 브랜드 인지도", spend: 6300, impressions: 3200, clicks: 130 },
       { name: "[데모] 시즌 프로모션", spend: 1980, impressions: 572, clicks: 29 },
-    ].map((c) => scaleCampaign(c, r.days / 7)),
+    ].map((c): MetaCampaign => scaleCampaign(c, r.days / 7)).concat([
+      { ...scaleCampaign({ name: "Instagram post: [데모] 신작 공개", spend: 8800, impressions: 3400, clicks: 52 }, r.days / 7), account: "데모 인스타그램 프로모션", status: "ACTIVE", promo: true },
+    ]),
+    accounts: [
+      { id: "act_1000000000001", name: "데모 광고 계정", role: "main", currency: "KRW", spend: 35594, campaigns: 4, included: true, ok: true },
+      { id: "act_1000000000002", name: "데모 인스타그램 프로모션", role: "discovered", currency: "KRW", spend: 8800, campaigns: 1, included: true, ok: true },
+    ],
+    notes: [],
   };
 }
 

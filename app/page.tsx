@@ -1,5 +1,5 @@
 import { BRANDS, type BrandId } from "@/lib/platforms";
-import { periodSplit, type MetaSummary } from "@/lib/meta";
+import { periodSplit, type MetaAccountRole, type MetaSummary } from "@/lib/meta";
 import type { YoutubeSummary } from "@/lib/youtube";
 import { fmtCompact, fmtDate, fmtValue } from "@/lib/format";
 import { TrendChart } from "@/components/TrendChart";
@@ -7,6 +7,7 @@ import { BarList, Delta, Stat } from "@/components/ui";
 import { AdsPanel, Ga4Panel, RevenuePanel, VercelPanel } from "@/components/panels";
 import { ActionsPanel, OverviewPanel } from "@/components/Overview";
 import { EffectPanel } from "@/components/EffectPanel";
+import { LevelIcon } from "@/components/icons";
 import { ViewTabs, type TabDef } from "@/components/ViewTabs";
 import type { FlowSeries } from "@/components/FlowChart";
 import { loadDashboard } from "@/lib/dashboard";
@@ -14,6 +15,20 @@ import { exportData } from "@/lib/export";
 import { parseRange, PRESETS, rangeQuery, yesterdayDate, type DateRange } from "@/lib/range";
 
 export const dynamic = "force-dynamic";
+
+const ROLE_LABEL: Record<MetaAccountRole, string> = { main: "대표(Ads Manager)", extra: "추가 계정", discovered: "비즈니스에서 찾은 계정" };
+const STATUS: Record<string, { text: string; level: "good" | "warn" | "bad" | "hold" }> = {
+  ACTIVE: { text: "진행 중", level: "good" },
+  PAUSED: { text: "일시중지", level: "hold" },
+  CAMPAIGN_PAUSED: { text: "일시중지", level: "hold" },
+  ADSET_PAUSED: { text: "일시중지", level: "hold" },
+  IN_PROCESS: { text: "처리 중", level: "hold" },
+  PENDING_REVIEW: { text: "검토 중", level: "warn" },
+  WITH_ISSUES: { text: "문제 있음", level: "warn" },
+  DISAPPROVED: { text: "반려", level: "bad" },
+  ARCHIVED: { text: "보관", level: "hold" },
+  DELETED: { text: "삭제됨", level: "hold" },
+};
 
 function MetaPanel({ m, range }: { m: MetaSummary; range: DateRange }) {
   if (!m.ok) {
@@ -28,10 +43,13 @@ function MetaPanel({ m, range }: { m: MetaSummary; range: DateRange }) {
   const curDays = m.days.slice(-range.days);
   const maxSpend = Math.max(...m.campaigns.map((c) => c.spend), 1);
   const cur$ = (n: number) => fmtValue(n, "won", m.currency);
+  const promos = m.campaigns.filter((c) => c.promo);
+  const promoSpend = promos.reduce((a, c) => a + c.spend, 0);
+  const multi = m.accounts.length > 1;
   return (
     <section className="panel">
       <div className="panel-head">
-        <h2>메타 광고</h2>
+        <h2>메타 광고{promos.length || multi ? " · 인스타 프로모션 포함" : ""}</h2>
         <p className="meta">
           {m.accountName} · {range.label}
         </p>
@@ -56,6 +74,50 @@ function MetaPanel({ m, range }: { m: MetaSummary; range: DateRange }) {
           <Delta cur={cur.cpm} prev={prev?.cpm ?? null} goodWhen="down" />
         </Stat>
       </div>
+      {m.notes.map((n) => (
+        <div key={n} className="alert warn" role="note">
+          <p>{n}</p>
+        </div>
+      ))}
+      <div className="promo-sum">
+        <span className="vchip hold">
+          <LevelIcon level={promos.length ? "good" : "hold"} size={11} />
+          인스타·페이스북 프로모션(부스트)
+        </span>
+        <span>
+          {promos.length ? (
+            <>
+              <strong>{cur$(promoSpend)}</strong> · 캠페인 {promos.length}개 (위 합계에 포함)
+            </>
+          ) : (
+            "이 기간 프로모션 캠페인이 없습니다"
+          )}
+        </span>
+      </div>
+      {multi && (
+        <>
+          <h3>광고 계정별</h3>
+          <ul className="acct-list">
+            {m.accounts.map((a) => (
+              <li key={a.id} className={a.ok ? "" : "bad"}>
+                <span className="acct-name">
+                  <strong>{a.ok ? a.name || a.id : a.id}</strong>
+                  <span className="fine-inline">{ROLE_LABEL[a.role]}</span>
+                </span>
+                {a.ok ? (
+                  <span className="acct-val">
+                    {fmtValue(a.spend, "won", a.currency)} · 캠페인 {a.campaigns}개{a.included ? "" : " · 합계 제외(통화 다름)"}
+                  </span>
+                ) : (
+                  <span className="acct-val bad">
+                    <LevelIcon level="bad" size={11} /> {a.reason}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       <div className="charts">
         <div>
           <h3>일별 지출</h3>
@@ -81,10 +143,22 @@ function MetaPanel({ m, range }: { m: MetaSummary; range: DateRange }) {
                 </tr>
               </thead>
               <tbody>
-                {m.campaigns.slice(0, 8).map((c) => (
-                  <tr key={c.name}>
-                    <td className="name" title={c.name}>
+                {m.campaigns.slice(0, 12).map((c, i) => {
+                  const st = c.status ? STATUS[c.status] ?? { text: c.status, level: "hold" as const } : null;
+                  return (
+                  <tr key={`${c.account ?? ""}-${c.name}-${i}`}>
+                    <td className="name" title={c.account ? `${c.name} · ${c.account}` : c.name}>
                       {c.name}
+                      <span className="tags">
+                        {c.promo && <span className="vchip hold">프로모션</span>}
+                        {st && (
+                          <span className={`vchip ${st.level}`}>
+                            <LevelIcon level={st.level} size={10} />
+                            {st.text}
+                          </span>
+                        )}
+                        {c.account && <span className="fine-inline">{c.account}</span>}
+                      </span>
                     </td>
                     <td>
                       <span className="inline-bar">
@@ -96,7 +170,8 @@ function MetaPanel({ m, range }: { m: MetaSummary; range: DateRange }) {
                     <td className="num">{fmtCompact(c.clicks)}</td>
                     <td className="num">{c.impressions ? `${((c.clicks / c.impressions) * 100).toFixed(2)}%` : "-"}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -23,7 +23,7 @@
 | 사이트·배포 (Vercel) | `VERCEL_API_TOKEN`, `VERCEL_TEAM_ID` | `VERCEL_PROJECT_ID` | 팀 범위 토큰(읽기만 사용) |
 | 구글 광고 | `GOOGLE_ADS_REFRESH_TOKEN` (+ OAuth 클라이언트) | `GOOGLE_ADS_CUSTOMER_ID` (숫자 10자리) | `adwords` |
 | 유튜브 | OAuth 클라이언트 | `YOUTUBE_REFRESH_TOKEN`, `YOUTUBE_CHANNEL_ID` | `youtube.readonly` |
-| 메타 | — | `META_ACCESS_TOKEN`, `META_AD_ACCOUNT_ID` | `ads_read` |
+| 메타 | — | `META_ACCESS_TOKEN`, `META_AD_ACCOUNT_ID` (+선택 `META_BUSINESS_ID`, `META_EXTRA_AD_ACCOUNT_IDS`) | `ads_read` (+`business_management`: 비즈니스 ID로 자동 탐색할 때) |
 
 속성·계정 ID (비밀이 아님): GA4 속성 하우스케이퍼 `555914097` / 토포제네시스 `487961539`, 구글 광고 고객 ID 하우스케이퍼 `8556065657` / 토포제네시스 `5133039562`.
 
@@ -73,6 +73,15 @@ Supabase 읽기 전용 키: purchase 테이블에 `select`만 허용하는 RLS �
 참여 = GA4 참여 세션. 실제 결제(Polar·Supabase)는 어느 채널에서 왔는지 나눌 수 없어 판정에 쓰지 않는다. GA4 캠페인 리포트를 못 읽으면 모든 캠페인이 보류가 되고 안내가 뜬다.
 
 내보내기(`내보내기` 버튼): 담을 내용(퍼널·채널·캠페인·일별)과 형식을 고르면 CSV(`/api/export?brand=&range=|from=&to=&parts=&caveat=`, UTF-8 BOM, 엑셀 수식 주입 방지) 내려받기 또는 요약 텍스트 복사. 대시보드 로그인이 필요하고, 파일에는 집계 숫자와 캠페인 이름만 들어가며 토큰·계정 ID는 없다.
+
+## 메타: 인스타그램 프로모션(부스트) 읽기
+Business Suite·인스타그램 앱의 "게시물 홍보"는 Ads Manager 대표 계정이 아니라 **다른 광고 계정**에 생기는 경우가 많다(대표 계정에 캠페인이 0이어도 지출이 있을 수 있음). 같은 Marketing API(`/{act}/insights`)로 읽으므로, 그 광고 계정까지 브랜드 설정에 넣으면 대시보드에 합산되고 "프로모션(부스트)" 줄·계정별 목록·캠페인 상태(진행 중/일시중지 …)로 보인다.
+- `{브랜드}_META_BUSINESS_ID` — 비즈니스 포트폴리오 ID. 그 비즈니스가 소유·대행하는 광고 계정(`owned_ad_accounts`, `client_ad_accounts`)을 **자동으로 찾아** 모두 읽는다. 토큰에 `business_management` 권한(+ 각 광고 계정 접근)이 필요하다.
+- `{브랜드}_META_EXTRA_AD_ACCOUNT_IDS` — 추가로 읽을 광고 계정 ID(쉼표 구분, 숫자 또는 `act_숫자`). 비즈니스 ID 없이 직접 지정할 때.
+- 토큰은 기존 `{브랜드}_META_ACCESS_TOKEN`을 그대로 쓴다. 시스템 사용자 토큰이라면 그 시스템 사용자에게 해당 광고 계정(자산)을 할당해야 한다.
+- **브랜드는 섞이지 않는다**: 계정은 `{브랜드}_` 접두사 env에서만 읽고, 다른 브랜드에 설정된 계정이 탐색 결과에 나오면 이 브랜드 합계에서 뺀다(화면에 안내). 통화가 다른 계정은 합계에 넣지 않고 목록에만 보인다.
+- 비밀이 아닌 ID 메모: 토포제네시스 Ads Manager `act_1087646437400340`, 비즈니스 `4491957361125359` / 하우스케이퍼 비즈니스 `1855343032512902`, 광고 계정 `act_567801815128070`.
+- 프로모션 판별: 대표 계정이 아닌 계정의 캠페인 전부, 그리고 대표 계정에서도 이름이 "Instagram post…/부스트/홍보" 같은 패턴인 캠페인에 "프로모션" 표시가 붙는다. 상태는 `effective_status`.
 
 ## 레딧 refresh token 발급 (`/api/reddit/connect`)
 1. `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `{브랜드}_REDDIT_AD_ACCOUNT_ID`가 있고 refresh token만 없으면 레딧 카드에 "레딧 연결하기" 버튼이 보인다.

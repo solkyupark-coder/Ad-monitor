@@ -330,3 +330,12 @@ body:has(dialog[open]) { overflow: hidden; } /* 시트가 열려 있으면 뒤 �
   .sheet-grip { display: block; }
   .head-actions .btn { min-height: 44px; }
 }
+
+/* ── 메타: 인스타 프로모션·광고 계정별 ───────────────────────── */
+.promo-sum { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 14px; font-size: 13px; }
+.acct-list { list-style: none; margin: 8px 0 0; padding: 0; }
+.acct-list li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; padding: 10px 0; border-top: 1px solid var(--grid); font-size: 13px; }
+.acct-name { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.acct-val { font-variant-numeric: tabular-nums; color: var(--ink2); }
+.acct-val.bad { color: var(--bad); display: inline-flex; align-items: center; gap: 4px; }
+.data td.name .tags { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 3px; white-space: normal; }

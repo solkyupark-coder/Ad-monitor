@@ -23,7 +23,7 @@ export const PLATFORMS: PlatformDef[] = [
     label: "메타 (페이스북·인스타 광고)",
     shared: [],
     perBrand: ["META_ACCESS_TOKEN", "META_AD_ACCOUNT_ID"],
-    note: "브랜드마다 Meta 앱이 따로라 토큰도 브랜드별. 장기(60일) 토큰 또는 시스템 사용자 토큰 필요. 본인 계정만 쓰면 개발 모드로 심사 없이 가능.",
+    note: "브랜드마다 Meta 앱이 따로라 토큰도 브랜드별. 장기(60일) 토큰 또는 시스템 사용자 토큰 필요(ads_read). 인스타그램 프로모션(부스트)이 Ads Manager 계정이 아닌 다른 광고 계정에 있으면 {브랜드}_META_BUSINESS_ID(자동 탐색, business_management 필요) 또는 {브랜드}_META_EXTRA_AD_ACCOUNT_IDS(직접 지정)를 추가.",
   },
   {
     id: "google_ads",
@@ -115,6 +115,8 @@ export function statusFor(brand: BrandId, env: NodeJS.ProcessEnv = process.env):
 
 // 필수는 아니지만 읽는 환경변수. 없으면 기본값을 쓴다.
 export const OPTIONAL_ENV = [
+  "{BRAND}_META_BUSINESS_ID", // 비즈니스 포트폴리오 ID — 그 아래 광고 계정(인스타 프로모션 전용 계정 포함)을 자동으로 찾는다(business_management 권한)
+  "{BRAND}_META_EXTRA_AD_ACCOUNT_IDS", // 추가로 읽을 광고 계정 ID(쉼표 구분, 숫자 또는 act_숫자)
   "GOOGLE_ADS_LOGIN_CUSTOMER_ID", // 관리자(MCC) 계정으로 접근할 때만
   "GOOGLE_ADS_API_VERSION", // 기본 v25. 구버전은 정해진 날짜에 종료된다
   "DASHBOARD_UTC_OFFSET_HOURS", // 실매출 날짜 경계. 기본 9(한국)

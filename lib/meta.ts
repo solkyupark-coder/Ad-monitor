@@ -3,9 +3,30 @@ import { BRANDS, type BrandId } from "@/lib/platforms";
 import { eachDay, type DateRange } from "@/lib/range";
 
 export type MetaDay = { date: string; spend: number; impressions: number; clicks: number };
-export type MetaCampaign = { name: string; spend: number; impressions: number; clicks: number };
+export type MetaCampaign = {
+  name: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  account?: string; // 이 캠페인이 있는 광고 계정 이름(계정이 여러 개일 때 구분)
+  status?: string; // 메타 effective_status (ACTIVE, PAUSED …)
+  promo?: boolean; // 인스타·페이스북 프로모션(부스트)로 보이는 캠페인
+};
+// 브랜드가 쓰는 광고 계정 하나. 인스타그램 프로모션(비즈니스 스위트)은 Ads Manager 계정과 다른 광고 계정에 생기는 경우가 많다.
+export type MetaAccountRole = "main" | "extra" | "discovered";
+export type MetaAccount = {
+  id: string; // act_숫자 (비밀 아님)
+  name: string;
+  role: MetaAccountRole;
+  currency: string;
+  spend: number; // 선택 기간
+  campaigns: number;
+  included: boolean; // 합계에 넣었는지(통화가 다르면 제외)
+  ok: boolean;
+  reason?: string;
+};
 export type MetaSummary =
-  | { ok: true; accountName: string; currency: string; days: MetaDay[]; campaigns: MetaCampaign[] }
+  | { ok: true; accountName: string; currency: string; days: MetaDay[]; campaigns: MetaCampaign[]; accounts: MetaAccount[]; notes: string[] }
   | { ok: false; reason: string };
 
 export type MetaTotals = { spend: number; impressions: number; clicks: number; ctr: number; cpc: number; cpm: number };
@@ -13,7 +34,7 @@ export type MetaTotals = { spend: number; impressions: number; clicks: number; c
 const API = "https://graph.facebook.com/v21.0";
 
 type GraphError = { error?: { code?: number } };
-type Row = { date_start?: string; campaign_name?: string; spend?: string; impressions?: string; clicks?: string };
+type Row = { date_start?: string; campaign_id?: string; campaign_name?: string; spend?: string; impressions?: string; clicks?: string };
 
 export function totals(days: MetaDay[]): MetaTotals {
   const spend = days.reduce((a, d) => a + d.spend, 0);
@@ -46,41 +67,167 @@ function fillDays(rows: Row[], range: DateRange): MetaDay[] {
   return eachDay(range.prev.from, range.to).map((d) => byDate.get(d) ?? { date: d, spend: 0, impressions: 0, clicks: 0 });
 }
 
-export async function metaSummary(brand: BrandId, range: DateRange): Promise<MetaSummary> {
-  const prefix = BRANDS.find((b) => b.id === brand)!.prefix;
-  const token = process.env[`${prefix}_META_ACCESS_TOKEN`];
-  const rawId = process.env[`${prefix}_META_AD_ACCOUNT_ID`];
-  if (!token || !rawId) return { ok: false, reason: "자격증명 없음" };
-  const account = rawId.startsWith("act_") ? rawId : `act_${rawId}`;
+const MAX_ACCOUNTS = 10;
+const digits = (v: string | undefined): string | null => {
+  const d = (v ?? "").trim().replace(/^act_/, "");
+  return /^\d{5,20}$/.test(d) ? d : null; // 경로에 들어가므로 숫자만 허용
+};
+const actList = (v: string | undefined): string[] => (v ?? "").split(/[\s,;]+/).map(digits).filter((d): d is string => d !== null).map((d) => `act_${d}`);
+
+// 브랜드별로 설정된 광고 계정(대표 + 추가). 다른 브랜드 것과 섞이지 않게 접두사로만 읽는다.
+function configuredAccounts(prefix: string): { main: string | null; extra: string[] } {
+  const main = digits(process.env[`${prefix}_META_AD_ACCOUNT_ID`]);
+  return { main: main ? `act_${main}` : null, extra: actList(process.env[`${prefix}_META_EXTRA_AD_ACCOUNT_IDS`]) };
+}
+
+// 인스타·페이스북 '게시물 홍보(부스트)'로 만들어진 캠페인 이름 패턴(비즈니스 스위트 기본 이름 포함).
+const PROMO_NAME = /(^|[\s\[(])(instagram|facebook|ig|fb)\s*(post|reel|story)|boost|부스트|홍보|게시물 홍보|promotion/i;
+
+type AcctOk = { ok: true; name: string; currency: string; days: MetaDay[]; campaigns: (Row & { status?: string })[] };
+type AcctResult = AcctOk | { ok: false; reason: string };
+
+function graphReason(body: GraphError): string {
+  if (body.error?.code === 190) return "토큰 만료 또는 무효 — 장기 토큰을 다시 발급하세요";
+  if (body.error?.code === 10 || body.error?.code === 200) return "권한 부족 — ads_read 권한과 이 광고 계정 접근(자산 할당)을 확인하세요";
+  return "조회 실패 — 광고 계정 ID와 토큰 권한을 확인하세요";
+}
+
+async function fetchAccount(token: string, account: string, range: DateRange): Promise<AcctResult> {
   const headers = { authorization: `Bearer ${token}` };
   const get = (path: string) => fetch(`${API}/${account}${path}`, { headers, next: { revalidate: 600 } });
   try {
-    const [infoRes, dayRes, campRes] = await Promise.all([
+    const [infoRes, dayRes, campRes, statusRes] = await Promise.all([
       get("?fields=name,currency"),
       get(`/insights?fields=spend,impressions,clicks&time_increment=1&limit=1000&time_range=${encodeURIComponent(JSON.stringify({ since: range.prev.from, until: range.to }))}`),
-      get(`/insights?fields=campaign_name,spend,impressions,clicks&level=campaign&limit=50&time_range=${encodeURIComponent(JSON.stringify({ since: range.from, until: range.to }))}`),
+      get(`/insights?fields=campaign_id,campaign_name,spend,impressions,clicks&level=campaign&limit=50&time_range=${encodeURIComponent(JSON.stringify({ since: range.from, until: range.to }))}`),
+      get("/campaigns?fields=id,effective_status&limit=200"),
     ]);
     const failed = [infoRes, dayRes].find((r) => !r.ok);
-    if (failed) {
-      const body = (await failed.json().catch(() => ({}))) as GraphError;
-      if (body.error?.code === 190) return { ok: false, reason: "토큰 만료 또는 무효 — 장기 토큰을 다시 발급하세요" };
-      if (body.error?.code === 10 || body.error?.code === 200) return { ok: false, reason: "권한 부족 — ads_read 권한을 확인하세요" };
-      return { ok: false, reason: "조회 실패 — 광고 계정 ID와 토큰 권한을 확인하세요" };
-    }
+    if (failed) return { ok: false, reason: graphReason((await failed.json().catch(() => ({}))) as GraphError) };
     const info = (await infoRes.json()) as { name?: string; currency?: string };
     const days = fillDays(((await dayRes.json()) as { data?: Row[] }).data ?? [], range);
-    const campaigns = campRes.ok
-      ? (((await campRes.json()) as { data?: Row[] }).data ?? [])
-          .map((r) => ({
-            name: r.campaign_name ?? "(이름 없음)",
-            spend: Number(r.spend ?? 0),
-            impressions: Number(r.impressions ?? 0),
-            clicks: Number(r.clicks ?? 0),
-          }))
-          .sort((a, b) => b.spend - a.spend)
-      : [];
-    return { ok: true, accountName: info.name ?? "", currency: info.currency ?? "KRW", days, campaigns };
+    const status = new Map<string, string>();
+    if (statusRes.ok) for (const c of ((await statusRes.json()) as { data?: { id?: string; effective_status?: string }[] }).data ?? []) if (c.id && c.effective_status) status.set(c.id, c.effective_status);
+    const campaigns = campRes.ok ? (((await campRes.json()) as { data?: Row[] }).data ?? []).map((r) => ({ ...r, status: r.campaign_id ? status.get(r.campaign_id) : undefined })) : [];
+    return { ok: true, name: info.name ?? "", currency: info.currency ?? "KRW", days, campaigns };
   } catch {
     return { ok: false, reason: "조회 실패(네트워크)" };
   }
+}
+
+// 비즈니스(포트폴리오)가 소유·대행하는 광고 계정 ID들. 인스타 프로모션 전용 계정을 ID 없이 찾는 용도(business_management 필요).
+async function discoverAccounts(token: string, business: string): Promise<{ ids: string[]; failed: boolean }> {
+  const headers = { authorization: `Bearer ${token}` };
+  const ids: string[] = [];
+  let failed = false;
+  for (const edge of ["owned_ad_accounts", "client_ad_accounts"]) {
+    try {
+      const res = await fetch(`${API}/${business}/${edge}?fields=account_id&limit=100`, { headers, next: { revalidate: 600 } });
+      if (!res.ok) {
+        failed = true;
+        continue;
+      }
+      for (const a of ((await res.json()) as { data?: { account_id?: string }[] }).data ?? []) {
+        const d = digits(a.account_id);
+        if (d) ids.push(`act_${d}`);
+      }
+    } catch {
+      failed = true;
+    }
+  }
+  return { ids, failed };
+}
+
+export async function metaSummary(brand: BrandId, range: DateRange): Promise<MetaSummary> {
+  const prefix = BRANDS.find((b) => b.id === brand)!.prefix;
+  const token = process.env[`${prefix}_META_ACCESS_TOKEN`];
+  if (!token || !process.env[`${prefix}_META_AD_ACCOUNT_ID`]) return { ok: false, reason: "자격증명 없음" };
+  const { main, extra } = configuredAccounts(prefix);
+  if (!main) return { ok: false, reason: `${prefix}_META_AD_ACCOUNT_ID 형식이 올바르지 않습니다(숫자 또는 act_숫자)` };
+  const notes: string[] = [];
+
+  // 다른 브랜드에 설정된 광고 계정은 이 브랜드에 섞지 않는다.
+  const others = new Set(BRANDS.filter((b) => b.id !== brand).flatMap((b) => { const c = configuredAccounts(b.prefix); return [c.main, ...c.extra].filter((x): x is string => !!x); }));
+  const roles = new Map<string, MetaAccountRole>([[main, "main"]]);
+  for (const id of extra) if (!roles.has(id)) roles.set(id, "extra");
+  const business = digits(process.env[`${prefix}_META_BUSINESS_ID`]);
+  if (business) {
+    const found = await discoverAccounts(token, business);
+    if (found.failed) notes.push(`비즈니스 ${business}의 광고 계정 목록을 읽지 못했습니다 — 토큰에 business_management 권한이 있고 그 비즈니스에 접근할 수 있는지 확인하세요.`);
+    for (const id of found.ids) if (!roles.has(id)) roles.set(id, "discovered");
+  }
+  for (const id of [...roles.keys()]) {
+    if (id !== main && others.has(id)) {
+      roles.delete(id);
+      notes.push(`${id}는 다른 브랜드에 설정된 광고 계정이라 이 브랜드 합계에서 뺐습니다.`);
+    }
+  }
+  if (others.has(main)) notes.push(`대표 광고 계정 ${main}이 다른 브랜드에도 설정돼 있어 두 브랜드 수치가 섞일 수 있습니다 — ${prefix}_META_AD_ACCOUNT_ID를 확인하세요.`);
+  let ids = [...roles.keys()];
+  if (ids.length > MAX_ACCOUNTS) {
+    notes.push(`광고 계정이 ${ids.length}개라 앞의 ${MAX_ACCOUNTS}개만 읽었습니다.`);
+    ids = ids.slice(0, MAX_ACCOUNTS);
+  }
+
+  const results = await Promise.all(ids.map((id) => fetchAccount(token, id, range)));
+  const okIdx = results.map((r, i) => (r.ok ? i : -1)).filter((i) => i >= 0);
+  if (!okIdx.length) {
+    const first = results[0];
+    return { ok: false, reason: first && !first.ok ? first.reason : "조회 실패" };
+  }
+  const mainRes = results[ids.indexOf(main)];
+  const baseCurrency = mainRes?.ok ? mainRes.currency : (results[okIdx[0]] as AcctOk).currency;
+  if (mainRes && !mainRes.ok) notes.push(`Ads Manager 대표 계정을 읽지 못했습니다: ${mainRes.reason}`);
+
+  const accounts: MetaAccount[] = [];
+  const included: { id: string; res: AcctOk }[] = [];
+  results.forEach((r, i) => {
+    const id = ids[i];
+    const role = roles.get(id) ?? "extra";
+    if (!r.ok) {
+      accounts.push({ id, name: "", role, currency: "", spend: 0, campaigns: 0, included: false, ok: false, reason: r.reason });
+      return;
+    }
+    const inc = r.currency === baseCurrency;
+    if (!inc) notes.push(`${id}(${r.currency})는 통화가 달라(${baseCurrency}) 합계에 넣지 않았습니다.`);
+    const rangeSpend = r.days.slice(-range.days).reduce((a, d) => a + d.spend, 0);
+    accounts.push({ id, name: r.name, role, currency: r.currency, spend: rangeSpend, campaigns: r.campaigns.length, included: inc, ok: true });
+    if (inc) included.push({ id, res: r });
+  });
+
+  // 같은 날짜끼리 합친다(모든 계정이 같은 날짜 목록을 가진다).
+  const byDate = new Map<string, MetaDay>();
+  for (const { res } of included) {
+    for (const d of res.days) {
+      const cur = byDate.get(d.date) ?? { date: d.date, spend: 0, impressions: 0, clicks: 0 };
+      cur.spend += d.spend;
+      cur.impressions += d.impressions;
+      cur.clicks += d.clicks;
+      byDate.set(d.date, cur);
+    }
+  }
+  const days = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+  const multi = included.length > 1;
+  const campaigns: MetaCampaign[] = included
+    .flatMap(({ id, res }) =>
+      res.campaigns.map((r) => {
+        const name = r.campaign_name ?? "(이름 없음)";
+        return {
+          name,
+          spend: Number(r.spend ?? 0),
+          impressions: Number(r.impressions ?? 0),
+          clicks: Number(r.clicks ?? 0),
+          account: multi ? res.name || id : undefined,
+          status: r.status,
+          promo: roles.get(id) !== "main" || PROMO_NAME.test(name),
+        };
+      }),
+    )
+    .sort((a, b) => b.spend - a.spend);
+
+  const anySpend = days.slice(-range.days).some((d) => d.spend > 0);
+  if (!anySpend && !campaigns.length && !extra.length && !business) {
+    notes.push(`이 기간 Ads Manager 계정(${main})에 광고가 없습니다. 인스타그램 프로모션(부스트)은 다른 광고 계정에 있을 수 있어요 — ${prefix}_META_BUSINESS_ID(자동 탐색) 또는 ${prefix}_META_EXTRA_AD_ACCOUNT_IDS(직접 지정)를 설정하세요.`);
+  }
+  return { ok: true, accountName: included.map((i) => i.res.name || i.id).join(" · "), currency: baseCurrency, days, campaigns, accounts, notes };
 }

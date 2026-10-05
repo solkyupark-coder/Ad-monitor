@@ -1,11 +1,19 @@
-// 실제 결제 기준 매출(읽기 전용). 두 브랜드 모두 Polar 주문(브랜드별 조직 토큰).
-// 토포제네시스는 TOPOGENESIS_POLAR_ACCESS_TOKEN 이 없을 때만 예전 Supabase purchase 테이블로 대신 센다.
+// 실제 결제 기준 매출(읽기 전용). 두 브랜드 모두 Polar 주문(브랜드별 조직 토큰)이 기준이고,
+// 브랜드 Supabase purchase 테이블은 함께 있으면 대조값, Polar 토큰이 없으면 대체값이다.
 // 토큰·키 값은 화면·로그에 내지 않는다.
 import type { BrandId } from "@/lib/platforms";
 import { rangeInstants, type DateRange } from "@/lib/range";
 
 export type RevenueSummary =
-  | { ok: true; source: "polar" | "supabase"; currency: string; orders: number; amount: number | null; truncated: boolean }
+  | {
+      ok: true;
+      source: "polar" | "supabase";
+      currency: string;
+      orders: number;
+      amount: number | null;
+      truncated: boolean;
+      alt?: RevenueSummary; // Polar 기준일 때 Supabase purchase 대조값(자격증명이 있을 때만)
+    }
   | { ok: false; reason: string };
 
 const ZERO_DECIMAL = new Set(["KRW", "JPY", "VND", "CLP", "ISK", "UGX", "XAF", "XOF"]);
@@ -85,9 +93,16 @@ async function supabasePurchases(prefix: string, range: DateRange): Promise<Reve
   }
 }
 
+// 브랜드별 Supabase purchase env 접두사: {PREFIX}_SUPABASE_URL, {PREFIX}_SUPABASE_READONLY_KEY, {PREFIX}_PURCHASE_*.
+const SUPABASE_PREFIX: Record<BrandId, string> = { houscaper: "HOUSCAPER", topogenesis: "TOPOGENESIS" };
+const hasSupabase = (prefix: string) =>
+  !!process.env[`${prefix}_SUPABASE_URL`] && !!process.env[`${prefix}_SUPABASE_READONLY_KEY`];
+
+// Polar 우선. Supabase 자격증명도 있으면 대조값으로 같이 읽고, Polar 토큰이 없으면 Supabase가 실매출이 된다.
 export async function revenueSummary(brand: BrandId, range: DateRange): Promise<RevenueSummary> {
   const tokenEnv = POLAR_TOKEN_ENV[brand];
-  if (process.env[tokenEnv] || brand === "houscaper") return polar(tokenEnv, range);
-  // 토포제네시스 Polar 토큰이 아직 없으면 예전 Supabase purchase 테이블로 대신한다(마이그레이션 기간용).
-  return supabasePurchases("TOPOGENESIS", range);
+  const prefix = SUPABASE_PREFIX[brand];
+  if (!process.env[tokenEnv] && hasSupabase(prefix)) return supabasePurchases(prefix, range);
+  const [main, alt] = await Promise.all([polar(tokenEnv, range), hasSupabase(prefix) ? supabasePurchases(prefix, range) : undefined]);
+  return main.ok && alt ? { ...main, alt } : main;
 }

@@ -182,7 +182,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Que
   const range = parseRange(sp);
   const demo = demoOn();
   const statuses = statusFor(brand);
-  const DEMO_ON: PlatformId[] = ["meta", "youtube", "ga4", "revenue", "google_ads"];
+  const DEMO_ON: PlatformId[] = ["meta", "youtube", "ga4", "revenue", "purchase_db", "google_ads"];
   const isOn = (id: PlatformId) => (demo ? DEMO_ON.includes(id) : statuses.find((s) => s.platform.id === id)?.connected);
   const [meta, yt, ga, rev, ads] = await Promise.all([
     isOn("meta") ? (demo ? demoMeta(range) : metaSummary(brand, range)) : null,

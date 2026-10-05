@@ -225,8 +225,15 @@ export function RevenuePanel({ real, ga, range }: { real: RevenueSummary; ga: Ga
       ) : (
         <p className="note">{real.reason}</p>
       )}
+      {real.ok && real.alt && (
+        <p className="fine">
+          {real.alt.ok
+            ? `대조: Supabase purchase ${n(real.alt.orders)}건${real.alt.amount === null ? "" : ` · ${fmtValue(real.alt.amount, "won", real.alt.currency)}`}${real.alt.orders === real.orders ? " — Polar와 건수 일치" : ` — Polar와 ${n(Math.abs(real.alt.orders - real.orders))}건 차이 (테스트 결제·환불·동기화 지연 확인)`}`
+            : `대조: Supabase purchase 조회 실패 — ${real.alt.reason}`}
+        </p>
+      )}
       {real.ok && real.source === "supabase" && (
-        <p className="fine">Polar 토큰(TOPOGENESIS_POLAR_ACCESS_TOKEN)이 아직 없어 Supabase purchase 테이블로 세고 있습니다. 토큰을 넣고 재배포하면 Polar 주문 기준으로 바뀝니다.</p>
+        <p className="fine">Polar 토큰이 아직 없어 Supabase purchase 테이블로 세고 있습니다. 토큰을 넣고 재배포하면 Polar 주문 기준으로 바뀝니다.</p>
       )}
       {real.ok && real.truncated && <p className="fine">주문이 많아 일부만 집계됐을 수 있습니다.</p>}
       {cmp && cmp.level === "warn" && (

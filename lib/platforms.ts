@@ -1,6 +1,6 @@
 // D1: 플랫폼별 직접 연동(Windsor 미사용). 연결 상태는 환경변수 존재 여부로만 판단한다 — 값은 절대 화면/로그에 내지 않는다.
 export type BrandId = "houscaper" | "topogenesis";
-export type PlatformId = "meta" | "google_ads" | "youtube" | "ga4" | "revenue" | "reddit" | "tiktok";
+export type PlatformId = "meta" | "google_ads" | "youtube" | "ga4" | "revenue" | "purchase_db" | "reddit" | "tiktok";
 
 export const BRANDS: { id: BrandId; label: string; prefix: string }[] = [
   { id: "houscaper", label: "하우스케이퍼", prefix: "HOUSCAPER" },
@@ -56,9 +56,17 @@ export const PLATFORMS: PlatformDef[] = [
       topogenesis: ["TOPOGENESIS_POLAR_ACCESS_TOKEN"],
     },
     fallback: {
+      houscaper: ["HOUSCAPER_SUPABASE_URL", "HOUSCAPER_SUPABASE_READONLY_KEY"],
       topogenesis: ["TOPOGENESIS_SUPABASE_URL", "TOPOGENESIS_SUPABASE_READONLY_KEY"],
     },
-    note: "두 브랜드 모두 Polar 주문 기준(브랜드별 조직의 읽기 전용 토큰, orders:read). 토포제네시스는 Polar 토큰이 없을 때만 예전 Supabase purchase 테이블로 대신 센다.",
+    note: "두 브랜드 모두 Polar 주문 기준(브랜드별 조직의 읽기 전용 토큰, orders:read). Polar 토큰이 없으면 그 브랜드의 Supabase purchase 테이블로 대신 센다.",
+  },
+  {
+    id: "purchase_db",
+    label: "결제 DB (Supabase purchase)",
+    shared: [],
+    perBrand: ["SUPABASE_URL", "SUPABASE_READONLY_KEY"],
+    note: "브랜드 앱의 purchase 테이블(읽기 전용 키, RLS로 select만). Polar가 있으면 실매출은 Polar 기준이고 이 값은 대조용으로 함께 보이며, Polar가 없으면 이 값이 실매출이 된다.",
   },
   {
     id: "reddit",
@@ -105,13 +113,12 @@ export const OPTIONAL_ENV = [
   "DASHBOARD_UTC_OFFSET_HOURS", // 실매출 날짜 경계. 기본 9(한국)
   "REDDIT_REDIRECT_URI", // 레딧 앱에 등록한 redirect. 기본은 접속한 사이트 주소(루트)
   "YOUTUBE_REDIRECT_URI", // 구글 클라이언트에 등록한 redirect. 기본은 {사이트}/api/youtube/callback
-  "TOPOGENESIS_SUPABASE_URL", // Polar 토큰이 없을 때만 쓰는 이전 방식(Supabase purchase)
-  "TOPOGENESIS_SUPABASE_READONLY_KEY", // 〃
-  "TOPOGENESIS_PURCHASE_TABLE", // 기본 purchase
-  "TOPOGENESIS_PURCHASE_DATE_COLUMN", // 기본 created_at
-  "TOPOGENESIS_PURCHASE_AMOUNT_COLUMN", // 기본 amount (빈 값이면 건수만 집계)
-  "TOPOGENESIS_PURCHASE_CURRENCY", // 기본 KRW
-  "TOPOGENESIS_PURCHASE_AMOUNT_DIVISOR", // 기본 1 (금액이 센트 단위면 100)
+  // 아래는 브랜드 접두사(HOUSCAPER_/TOPOGENESIS_)를 붙여 쓴다
+  "{BRAND}_PURCHASE_TABLE", // 기본 purchase
+  "{BRAND}_PURCHASE_DATE_COLUMN", // 기본 created_at
+  "{BRAND}_PURCHASE_AMOUNT_COLUMN", // 기본 amount (빈 값이면 건수만 집계)
+  "{BRAND}_PURCHASE_CURRENCY", // 기본 KRW
+  "{BRAND}_PURCHASE_AMOUNT_DIVISOR", // 기본 1 (금액이 센트 단위면 100)
 ] as const;
 
 // 이 앱이 읽지 않는 환경변수. 다른 용도가 없으면 Vercel에서 정리해도 된다. (이 앱은 지우지 않는다)

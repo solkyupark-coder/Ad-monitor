@@ -38,7 +38,7 @@ h3 { font-size: 13px; margin: 24px 0 8px; color: var(--ink2); font-weight: 600; 
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px; margin-top: 16px; }
 .panel-head { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; justify-content: space-between; }
 .meta { margin: 0; font-size: 13px; color: var(--ink2); }
-.kpis { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-top: 16px; }
+.kpis { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr)); margin-top: 16px; }
 .stat { padding: 12px 14px; border-radius: 12px; background: var(--plane); }
 .stat.hero { grid-column: 1 / -1; background: none; padding: 4px 2px 8px; }
 .stat-label { margin: 0; font-size: 13px; color: var(--ink2); }
@@ -47,7 +47,7 @@ h3 { font-size: 13px; margin: 24px 0 8px; color: var(--ink2); font-weight: 600; 
 .delta { font-size: 12px; font-weight: 600; }
 .delta .vs { font-weight: 400; color: var(--ink2); }
 .delta.good { color: var(--good); } .delta.bad { color: var(--bad); } .delta.flat { color: var(--ink2); font-weight: 400; }
-.charts { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.charts { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); }
 .chart { position: relative; padding-top: 34px; }
 .chart svg { width: 100%; height: auto; display: block; touch-action: pan-y; outline-offset: 2px; }
 .axis { font-size: 11px; fill: var(--muted); } .endlabel { font-size: 12px; font-weight: 600; fill: var(--ink); }
@@ -108,7 +108,7 @@ h3 { font-size: 13px; margin: 24px 0 8px; color: var(--ink2); font-weight: 600; 
 .funnel-value.zero { color: var(--bad); }
 @media (max-width: 560px) { .funnel-row { grid-template-columns: minmax(0, 1fr) 84px; } .funnel-track { grid-column: 1 / -1; grid-row: 2; } .funnel-rate { margin-left: 0; } }
 .pending-title { margin-top: 32px; }
-.grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
 .card h2 { font-size: 15px; margin: 0 0 4px; }
 .state { margin: 0 0 8px; font-size: 13px; color: var(--warn); font-weight: 600; }
@@ -131,3 +131,41 @@ ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; } code { font-size: 1
 .action-title { margin: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
 .action-area { color: var(--ink2); font-weight: 500; margin-right: 2px; }
 .action-do { margin: 3px 0 0; font-size: 13px; color: var(--ink2); }
+
+/* ── 모바일·터치 ───────────────────────────── */
+html { -webkit-text-size-adjust: 100%; }
+body { overflow-x: hidden; }
+.stat-value { overflow-wrap: anywhere; }
+.scroll { -webkit-overflow-scrolling: touch; }
+.data td.name { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+details > summary { cursor: pointer; padding: 10px 0; min-height: 44px; box-sizing: border-box; }
+@media (pointer: coarse) {
+  .tabs a, .presets a, .custom button, .connect { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+  .custom input { min-height: 40px; }
+}
+@media (max-width: 640px) {
+  main { padding: 16px 12px 56px; }
+  h1 { font-size: 20px; }
+  header { gap: 10px; }
+  .tabs { width: 100%; }
+  .tabs a { flex: 1; text-align: center; padding: 10px 8px; }
+  .panel { padding: 14px; border-radius: 14px; margin-top: 12px; }
+  .panel-head { flex-direction: column; align-items: flex-start; }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .stat { padding: 10px; }
+  .stat-value { font-size: 19px; }
+  .stat.hero .stat-value { font-size: 34px; white-space: normal; }
+  .range { gap: 8px; }
+  .presets { width: 100%; justify-content: space-between; }
+  .presets a { flex: 1; text-align: center; padding: 8px 0; }
+  .custom { width: 100%; box-sizing: border-box; border-radius: 14px; flex-wrap: wrap; padding: 6px 6px 6px 10px; }
+  .custom input { flex: 1 1 120px; min-width: 0; }
+  .custom button { flex: 0 0 auto; }
+  .charts { gap: 12px; }
+  .data { font-size: 12px; }
+  .data th, .data td { padding: 6px 6px; }
+  .data td.name { max-width: 140px; }
+  .verdict { padding: 12px; }
+  .action-list li { grid-template-columns: 40px minmax(0, 1fr); }
+}
+@media (max-width: 330px) { .kpis { grid-template-columns: minmax(0, 1fr); } }

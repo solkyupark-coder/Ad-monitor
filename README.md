@@ -55,6 +55,25 @@ Supabase 읽기 전용 키: purchase 테이블에 `select`만 허용하는 RLS �
 
 이 앱이 읽지 않는 env(`lib/platforms.ts` 의 `UNUSED_ENV`): `META_ACCESS_TOKEN`·`META_AD_ACCOUNT_ID`(공통 이름), `GOOGLE_ADS_DEVELOPER_TOKEN`(종료), `*_META_PAGE_ID`, `META_BUSINESS_PORTFOLIO_ID`, `INSTAGRAM_*`, `FACEBOOK_PAGE_*`, `NEXT_PUBLIC_GA_MEASUREMENT_ID`. 다른 용도가 없을 때만 정리한다.
 
+## 화면 구성과 광고 효과 추출
+한 화면에서 탭으로 전환한다(선택한 탭은 주소 `#해시`에 남음, 폰에서는 하단 고정 바).
+- **한눈에 보기**: 결론·다음 할 일, 광고비(채널 비중 띠), 1명당·참여 1회당·결제 1건당 비용, 퍼널 그래프, 일별 흐름(광고비/클릭/방문자 토글), 운영 체크.
+- **광고 효과**: 채널·캠페인마다 `효과 있음 / 점검 / 낭비 / 보류` 판정, 가장 효과적/가장 큰 낭비/측정 안 됨, 내보내기.
+- **매출·사이트**: 실매출(Polar·Supabase), GA4, Vercel. **광고 상세**: 메타·구글 광고·유튜브. **연결**: 아직 연결 안 된 플랫폼(있을 때만).
+
+광고 효과 판정(`lib/effect.ts`): 광고 플랫폼의 비용·클릭과 GA4 캠페인×소스/매체 리포트(`sessionCampaignName`, 데이터센터 도시는 요청 단계에서 제외)를 **캠페인 이름이 같을 때만** 잇는다(공백·기호 무시). 메타는 광고 링크에 `utm_campaign`(캠페인 이름)이 있어야 잡히고, 구글은 자동 태그(gclid)로 캠페인 이름이 들어온다. 새로 필요한 env는 없다.
+
+| 판정 | 기준 |
+|---|---|
+| 보류 | 클릭 20 미만 또는 GA4 연결 세션 10 미만 |
+| 낭비 | 참여율 10% 미만, 또는 참여 1회당 비용이 평균의 3배 이상 |
+| 점검 | 참여율 10~40%, 또는 참여는 좋은데 평균보다 비쌈 |
+| 효과 있음 | 참여율 40% 이상이고 참여 1회당 비용이 평균 이하 |
+
+참여 = GA4 참여 세션. 실제 결제(Polar·Supabase)는 어느 채널에서 왔는지 나눌 수 없어 판정에 쓰지 않는다. GA4 캠페인 리포트를 못 읽으면 모든 캠페인이 보류가 되고 안내가 뜬다.
+
+내보내기(`내보내기` 버튼): 담을 내용(퍼널·채널·캠페인·일별)과 형식을 고르면 CSV(`/api/export?brand=&range=|from=&to=&parts=&caveat=`, UTF-8 BOM, 엑셀 수식 주입 방지) 내려받기 또는 요약 텍스트 복사. 대시보드 로그인이 필요하고, 파일에는 집계 숫자와 캠페인 이름만 들어가며 토큰·계정 ID는 없다.
+
 ## 레딧 refresh token 발급 (`/api/reddit/connect`)
 1. `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `{브랜드}_REDDIT_AD_ACCOUNT_ID`가 있고 refresh token만 없으면 레딧 카드에 "레딧 연결하기" 버튼이 보인다.
 2. **`https://ad-monitor-eight.vercel.app`에 로그인한 상태에서** 누른다. 레딧 앱의 redirect URI가 이 주소(루트)여야 한다. 다른 주소로 접속하면 redirect가 달라져 레딧이 거절한다(`REDDIT_REDIRECT_URI`로 고정 가능).

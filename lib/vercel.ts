@@ -5,6 +5,7 @@ import { BRANDS } from "@/lib/platforms";
 import { eachDay, rangeInstants, type DateRange } from "@/lib/range";
 
 const API = "https://api.vercel.com";
+const DAILY_CHUNK = 90; // 일별 조회 한 번에 읽는 최대 일수(API 한도 100행 이하)
 
 export type VercelDeploy = { id: string; createdAt: string; state: string; message: string };
 export type VercelDay = { date: string; pageviews: number; visitors: number };
@@ -37,18 +38,22 @@ function toTop(r: Row, dim: string): VercelTop {
 
 async function analytics(base: Record<string, string>, range: DateRange, token: string) {
   const cur = rangeInstants(range);
-  const all = rangeInstants({ from: range.prev.from, to: range.to });
   const agg = (by: string, since: Date, until: Date, limit: string) =>
     call("/v1/query/web-analytics/visits/aggregate", { ...base, by, since: since.toISOString(), until: new Date(until.getTime() - 1).toISOString(), limit }, token);
-  const [daily, pages, refs, countries] = await Promise.all([
-    agg("day", all.since, all.until, "100"),
+  // 일별 조회는 한 번에 100행까지라, 직전 기간까지 합친 긴 기간(90일 프리셋 = 180일)은 90일 단위로 나눠 읽는다.
+  const chunks: { from: string; to: string }[] = [];
+  const dates = eachDay(range.prev.from, range.to);
+  for (let i = 0; i < dates.length; i += DAILY_CHUNK) chunks.push({ from: dates[i], to: dates[Math.min(i + DAILY_CHUNK, dates.length) - 1] });
+  const [dailyParts, pages, refs, countries] = await Promise.all([
+    Promise.all(chunks.map((c) => { const w = rangeInstants(c); return agg("day", w.since, w.until, "100"); })),
     agg("requestPath", cur.since, cur.until, "8"),
     agg("referrerHostname", cur.since, cur.until, "8"),
     agg("country", cur.since, cur.until, "8"),
   ]);
-  if (daily.status === 401 || daily.status === 403) return { ok: false as const, reason: "Web Analytics 조회 권한 없음 — 토큰 범위(팀)를 확인하세요" };
-  if (daily.status === 404 || daily.status === 400 || !daily.json) return { ok: false as const, reason: "Web Analytics가 꺼져 있거나 데이터가 없습니다 — Vercel 프로젝트 → Analytics에서 켜세요" };
-  const rows = (daily.json.data as Row[]) ?? [];
+  const denied = dailyParts.find((d) => d.status === 401 || d.status === 403);
+  if (denied) return { ok: false as const, reason: "Web Analytics 조회 권한 없음 — 토큰 범위(팀)를 확인하세요" };
+  if (dailyParts.some((d) => d.status === 404 || d.status === 400 || !d.json)) return { ok: false as const, reason: "Web Analytics가 꺼져 있거나 데이터가 없습니다 — Vercel 프로젝트 → Analytics에서 켜세요" };
+  const rows = dailyParts.flatMap((d) => (d.json!.data as Row[]) ?? []);
   const byDate = new Map<string, VercelDay>();
   for (const r of rows) {
     const d = String(r.day ?? r.date ?? r.timestamp ?? r.key ?? "").slice(0, 10);

@@ -5,6 +5,13 @@ import { eachDay, type DateRange } from "@/lib/range";
 
 export const demoOn = () => process.env.DASHBOARD_DEMO === "1";
 
+const scaleCampaign = <T extends { spend: number; impressions: number; clicks: number }>(c: T, k: number): T => ({
+  ...c,
+  spend: Math.round(c.spend * k),
+  impressions: Math.round(c.impressions * k),
+  clicks: Math.round(c.clicks * k),
+});
+
 // 직전 기간 + 조회 기간 날짜(비교용 일별 행).
 const demoDays = (r: DateRange) => eachDay(r.prev.from, r.to);
 
@@ -30,7 +37,7 @@ export function demoMeta(r: DateRange): MetaSummary {
       { name: "[데모] 리타겟팅 · 전환", spend: 11800, impressions: 5100, clicks: 260 },
       { name: "[데모] 브랜드 인지도", spend: 6300, impressions: 3200, clicks: 130 },
       { name: "[데모] 시즌 프로모션", spend: 1980, impressions: 572, clicks: 29 },
-    ],
+    ].map((c) => scaleCampaign(c, r.days / 7)),
   };
 }
 
@@ -56,6 +63,7 @@ export function demoYoutube(): YoutubeSummary {
 
 // ── GA4 · 실매출 · 구글 광고 데모 (화면 확인용, 실제 수치가 아님) ──
 import type { GeoRow, SourceRow } from "@/lib/traffic";
+import type { GaCampaignRow } from "@/lib/effect";
 import { assembleGa4, withRates, type Ga4Summary } from "@/lib/ga4";
 import type { GoogleAdsSummary } from "@/lib/googleads";
 import type { RevenueSummary } from "@/lib/revenue";
@@ -75,7 +83,17 @@ export function demoGa4(r: DateRange): Ga4Summary {
     { sourceMedium: "(direct) / (none)", sessions: 420, activeUsers: 360, engagedSessions: 150, engagementSec: 14000 },
     { sourceMedium: "google / organic", sessions: 180, activeUsers: 150, engagedSessions: 90, engagementSec: 9500 },
     { sourceMedium: "instagram / social", sessions: 90, activeUsers: 82, engagedSessions: 51, engagementSec: 4300 },
-    { sourceMedium: "facebook / paid", sessions: 70, activeUsers: 64, engagedSessions: 30, engagementSec: 2600 },
+    { sourceMedium: "facebook / paid", sessions: 95, activeUsers: 86, engagedSessions: 26, engagementSec: 2600 },
+    { sourceMedium: "instagram / paid", sessions: 60, activeUsers: 55, engagedSessions: 41, engagementSec: 3500 },
+  ];
+  const camp = (campaign: string, sourceMedium: string, sessions: number, engagedSessions: number): GaCampaignRow => ({ campaign, sourceMedium, sessions, engagedSessions, engagementSec: engagedSessions * 40 });
+  const campaigns: GaCampaignRow[] = [
+    camp("[데모] 검색 · 브랜드", "google / cpc", 110, 4),
+    camp("[데모] 신규 고객 · 트래픽", "facebook / paid", 70, 14),
+    camp("[데모] 리타겟팅 · 전환", "instagram / paid", 60, 41),
+    camp("[데모] 브랜드 인지도", "facebook / paid", 25, 12),
+    camp("[데모] 디스플레이 · 리마케팅", "google / cpc", 24, 1),
+    camp("(not set)", "google / cpc", 26, 0),
   ];
   const totals = (k: number) =>
     withRates({ activeUsers: Math.round(900 * k), sessions: Math.round(1100 * k), engagedSessions: Math.round(190 * k), engagementSec: 6800 * k, purchases: Math.round(3 * k), revenue: 20327 * k });
@@ -89,6 +107,7 @@ export function demoGa4(r: DateRange): Ga4Summary {
     geoCur: scale(geo, k),
     geoPrev: scale(geo, k * 0.85),
     geoTruncated: false,
+    campaigns: campaigns.map((c) => ({ ...c, sessions: Math.round(c.sessions * k), engagedSessions: Math.round(c.engagedSessions * k), engagementSec: c.engagementSec * k })),
   });
 }
 
@@ -110,7 +129,7 @@ export function demoAds(r: DateRange): GoogleAdsSummary {
       { name: "[데모] 검색 · 브랜드", cost: 38000, clicks: 96, impressions: 2100 },
       { name: "[데모] 디스플레이 · 리마케팅", cost: 17500, clicks: 41, impressions: 2600 },
       { name: "[데모] 성과 최대화", cost: 6900, clicks: 19, impressions: 480 },
-    ],
+    ].map((c) => ({ ...c, cost: Math.round((c.cost * r.days) / 7), clicks: Math.round((c.clicks * r.days) / 7), impressions: Math.round((c.impressions * r.days) / 7) })),
   };
 }
 

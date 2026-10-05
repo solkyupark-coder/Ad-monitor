@@ -1,18 +1,16 @@
-import { BRANDS, statusFor, type BrandId, type PlatformId } from "@/lib/platforms";
-import { youtubeSummary, type YoutubeSummary } from "@/lib/youtube";
-import { metaSummary, periodSplit, type MetaSummary } from "@/lib/meta";
-import { ga4Summary } from "@/lib/ga4";
-import { googleAdsSummary } from "@/lib/googleads";
-import { revenueSummary } from "@/lib/revenue";
-import { demoAds, demoGa4, demoMeta, demoOn, demoRevenue, demoVercel, demoYoutube } from "@/lib/demo";
+import { BRANDS, type BrandId } from "@/lib/platforms";
+import { periodSplit, type MetaSummary } from "@/lib/meta";
+import type { YoutubeSummary } from "@/lib/youtube";
 import { fmtCompact, fmtDate, fmtValue } from "@/lib/format";
 import { TrendChart } from "@/components/TrendChart";
 import { BarList, Delta, Stat } from "@/components/ui";
 import { AdsPanel, Ga4Panel, RevenuePanel, VercelPanel } from "@/components/panels";
-import { vercelSummary } from "@/lib/vercel";
 import { ActionsPanel, OverviewPanel } from "@/components/Overview";
-import { buildActions } from "@/lib/actions";
-import { buildOverview } from "@/lib/overview";
+import { EffectPanel } from "@/components/EffectPanel";
+import { ViewTabs, type TabDef } from "@/components/ViewTabs";
+import type { FlowSeries } from "@/components/FlowChart";
+import { loadDashboard } from "@/lib/dashboard";
+import { exportData } from "@/lib/export";
 import { parseRange, PRESETS, rangeQuery, yesterdayDate, type DateRange } from "@/lib/range";
 
 export const dynamic = "force-dynamic";
@@ -156,12 +154,12 @@ function RangePicker({ brand, range }: { brand: BrandId; range: DateRange }) {
     <div className="range">
       <nav className="presets" aria-label="조회 기간">
         {PRESETS.map((n) => (
-          <a key={n} href={`/?brand=${brand}&range=${n}`} className={range.preset === n ? "on" : ""}>
+          <a key={n} href={`/?brand=${brand}&range=${n}`} data-keep-hash className={range.preset === n ? "on" : ""}>
             {n}일
           </a>
         ))}
       </nav>
-      <form method="get" action="/" className={range.preset ? "custom" : "custom on"}>
+      <form method="get" action="/" data-keep-hash className={range.preset ? "custom" : "custom on"}>
         <input type="hidden" name="brand" value={brand} />
         <input type="date" name="from" defaultValue={range.from} max={yesterdayDate()} aria-label="시작일" required />
         <span>–</span>
@@ -175,6 +173,16 @@ function RangePicker({ brand, range }: { brand: BrandId; range: DateRange }) {
   );
 }
 
+// 광고 채널 전체의 참여 1회당 비용(통화가 하나이고 참여가 있을 때만).
+function effectCostPerEngaged(e: import("@/lib/effect").EffectReport): number | null {
+  if (e.mixedCurrency) return null;
+  // GA4에서 유입이 잡힌 채널만 합친다 — 추적 안 되는 채널의 광고비를 분자에 넣으면 비용이 부풀려진다.
+  const tracked = e.channels.filter((c) => c.sessions > 0);
+  const spend = tracked.reduce((a, c) => a + c.spend, 0);
+  const engaged = tracked.reduce((a, c) => a + c.engaged, 0);
+  return engaged ? spend / engaged : null;
+}
+
 type Query = { brand?: string; range?: string; from?: string; to?: string };
 
 export default async function Home({ searchParams }: { searchParams: Promise<Query> }) {
@@ -182,55 +190,82 @@ export default async function Home({ searchParams }: { searchParams: Promise<Que
   const q = sp.brand;
   const brand: BrandId = BRANDS.some((b) => b.id === q) ? (q as BrandId) : "houscaper";
   const range = parseRange(sp);
-  const demo = demoOn();
-  const statuses = statusFor(brand);
-  const DEMO_ON: PlatformId[] = ["meta", "youtube", "ga4", "revenue", "purchase_db", "vercel", "google_ads"];
-  const isOn = (id: PlatformId) => (demo ? DEMO_ON.includes(id) : statuses.find((s) => s.platform.id === id)?.connected);
-  const [meta, yt, ga, rev, ads, vc] = await Promise.all([
-    isOn("meta") ? (demo ? demoMeta(range) : metaSummary(brand, range)) : null,
-    isOn("youtube") ? (demo ? demoYoutube() : youtubeSummary(brand)) : null,
-    isOn("ga4") ? (demo ? demoGa4(range) : ga4Summary(brand, range)) : null,
-    isOn("revenue") ? (demo ? demoRevenue(range) : revenueSummary(brand, range)) : null,
-    isOn("google_ads") ? (demo ? demoAds(range) : googleAdsSummary(brand, range)) : null,
-    isOn("vercel") ? (demo ? demoVercel(range) : vercelSummary(brand, range)) : null,
-  ]);
-  const overview = buildOverview({
-    meta: meta && meta.ok ? { days: meta.days, currency: meta.currency } : null,
-    ads: ads && ads.ok ? { days: ads.days, currency: ads.currency } : null,
-    realUsers: ga && ga.ok ? ga.real.activeUsers : null,
-    botUsers: ga && ga.ok ? ga.split.suspectUsers : null,
-    orders: rev && rev.ok ? rev.orders : null,
-    days: range.days,
-  });
-  const connectedCount = statuses.filter((s) => isOn(s.platform.id)).length;
-  const pending = statuses.filter((s) => !isOn(s.platform.id));
-  const actions = buildActions({ days: range.days, meta, ads, ga, rev, vercel: vc, youtube: yt, pending: pending.map((p) => p.platform.label), verdict: overview.verdict });
-  return (
-    <main>
-      <header>
-        <h1>광고 모니터링</h1>
-        <nav className="tabs">
-          {BRANDS.map((b) => (
-            <a key={b.id} href={`/?brand=${b.id}&${rangeQuery(range)}`} className={b.id === brand ? "on" : ""}>
-              {b.label}
-            </a>
-          ))}
-        </nav>
-      </header>
-      <p className="sub">
-        {connectedCount} / {statuses.length} 플랫폼 연결됨 · 수치는 약 10분 간격으로 갱신됩니다.
-      </p>
-      <RangePicker brand={brand} range={range} />
-      {demo && <p className="demo">데모 데이터입니다. 실제 수치가 아닙니다.</p>}
-      <OverviewPanel o={overview} range={range} />
-      <ActionsPanel items={actions} />
-      {rev && <RevenuePanel real={rev} ga={ga} range={range} />}
-      {ga && <Ga4Panel g={ga} range={range} />}
-      {vc && <VercelPanel v={vc} ga={ga} range={range} />}
-      {meta && <MetaPanel m={meta} range={range} />}
-      {ads && <AdsPanel a={ads} ga={ga} range={range} />}
-      {yt && <YoutubePanel y={yt} brand={brand} />}
-      {pending.length > 0 && (
+  const d = await loadDashboard(brand, range);
+  const { meta, yt, ga, rev, ads, vc, overview, effect, actions, pending } = d;
+
+  // 한눈에 보기 일별 흐름: 광고비 / 클릭 / (있으면) 사이트 방문자 중 하나를 골라 본다.
+  const flow: FlowSeries[] = [];
+  const sumOf = (xs: number[]) => xs.reduce((a, x) => a + x, 0);
+  if (overview.daily.some((p) => p.spend !== null)) {
+    flow.push({ key: "spend", label: "광고비", kind: "won", currency: overview.currency, total: fmtValue(sumOf(overview.daily.map((p) => p.spend ?? 0)), "won", overview.currency), points: overview.daily.map((p) => ({ date: p.date, value: p.spend ?? 0 })) });
+  }
+  if (overview.daily.length) {
+    flow.push({ key: "clicks", label: "광고 클릭", kind: "count", total: fmtValue(sumOf(overview.daily.map((p) => p.clicks)), "count"), points: overview.daily.map((p) => ({ date: p.date, value: p.clicks })) });
+  }
+  if (vc && vc.ok && vc.analytics.ok) {
+    const days = vc.analytics.days.slice(-range.days);
+    flow.push({ key: "visitors", label: "방문자", kind: "count", total: `${fmtValue(sumOf(days.map((x) => x.visitors)), "count")}명`, points: days.map((x) => ({ date: x.date, value: x.visitors })) });
+  }
+
+  const exportJson = exportData(d);
+  const urgent = actions.filter((a) => a.level === "bad").length;
+  const check = actions.filter((a) => a.level === "warn").length;
+  const wasted = effect.campaigns.filter((c) => c.verdict === "bad").length;
+
+  const tabs: TabDef[] = [
+    {
+      id: "overview",
+      label: "한눈에 보기",
+      short: "한눈에",
+      badge: urgent ? { text: `긴급 ${urgent}`, short: String(urgent), level: "bad" } : check ? { text: `확인 ${check}`, short: String(check), level: "warn" } : null,
+      node: (
+        <>
+          <OverviewPanel o={overview} range={range} costPerEngaged={effectCostPerEngaged(effect)} flow={flow} />
+          <ActionsPanel items={actions} />
+        </>
+      ),
+    },
+    {
+      id: "effect",
+      label: "광고 효과",
+      short: "효과",
+      badge: wasted ? { text: `낭비 ${wasted}`, short: String(wasted), level: "bad" } : null,
+      node: <EffectPanel e={effect} range={range} data={exportJson} />,
+    },
+    {
+      id: "money",
+      label: "매출·사이트",
+      short: "매출",
+      node: (
+        <>
+          {rev && <RevenuePanel real={rev} ga={ga} range={range} />}
+          {ga && <Ga4Panel g={ga} range={range} />}
+          {vc && <VercelPanel v={vc} ga={ga} range={range} />}
+          {!rev && !ga && !vc && <p className="note panel">매출·사이트 소스가 아직 연결되지 않았습니다. '연결' 탭을 확인하세요.</p>}
+        </>
+      ),
+    },
+    {
+      id: "ads",
+      label: "광고 상세",
+      short: "광고",
+      node: (
+        <>
+          {meta && <MetaPanel m={meta} range={range} />}
+          {ads && <AdsPanel a={ads} ga={ga} range={range} />}
+          {yt && <YoutubePanel y={yt} brand={brand} />}
+          {!meta && !ads && !yt && <p className="note panel">광고 소스가 아직 연결되지 않았습니다. '연결' 탭을 확인하세요.</p>}
+        </>
+      ),
+    },
+  ];
+  if (pending.length > 0) {
+    tabs.push({
+      id: "connect",
+      label: "연결",
+      short: "연결",
+      badge: { text: String(pending.length), short: String(pending.length), level: "info" },
+      node: (
         <>
           <h3 className="pending-title">연결이 필요한 플랫폼</h3>
           <section className="grid">
@@ -267,7 +302,28 @@ export default async function Home({ searchParams }: { searchParams: Promise<Que
             ))}
           </section>
         </>
-      )}
+      ),
+    });
+  }
+
+  return (
+    <main>
+      <header>
+        <h1>광고 모니터링</h1>
+        <nav className="tabs" aria-label="브랜드">
+          {BRANDS.map((b) => (
+            <a key={b.id} href={`/?brand=${b.id}&${rangeQuery(range)}`} data-keep-hash className={b.id === brand ? "on" : ""}>
+              {b.label}
+            </a>
+          ))}
+        </nav>
+      </header>
+      <p className="sub">
+        {d.connectedCount} / {d.statuses.length} 플랫폼 연결됨 · 수치는 약 10분 간격으로 갱신됩니다.
+      </p>
+      <RangePicker brand={brand} range={range} />
+      {d.demo && <p className="demo">데모 데이터입니다. 실제 수치가 아닙니다.</p>}
+      <ViewTabs tabs={tabs} />
     </main>
   );
 }

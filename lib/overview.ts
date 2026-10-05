@@ -1,13 +1,18 @@
 // '한눈에' 퍼널 계산(순수 함수). 광고 노출 → 광고 클릭 → 사이트 실사용자(봇 제외) → 실제 결제.
-type Day = { impressions: number; clicks: number };
+type Day = { date?: string; impressions: number; clicks: number };
 type SpendDay = Day & { spend?: number; cost?: number };
 
 export type Level = "good" | "warn" | "bad" | "info";
 export type Meaning = { level: Level; rateName: string; text: string };
 export type FunnelStep = { key: string; label: string; note: string; value: number | null; rateFromPrev: number | null; meaning: Meaning | null };
 export type Verdict = { level: Level; headline: string; detail: string; action: string };
+export type DailyPoint = { date: string; spend: number | null; clicks: number; impressions: number };
+export type ChannelSpend = { name: string; spend: number };
 export type Overview = {
   verdict: Verdict | null;
+  spendPrev: number | null; // 직전 같은 길이 기간 광고비(비교용). 일별 데이터가 모자라면 null
+  channels: ChannelSpend[]; // 채널별 광고비(통화가 하나일 때만 의미 있음)
+  daily: DailyPoint[]; // 조회 기간 일별 합계(두 광고 채널 합산)
   spend: number | null;
   currency: string;
   spendNote: string;
@@ -28,8 +33,8 @@ export function buildOverview(input: {
 }): Overview {
   const lastN = <T,>(days: T[]) => days.slice(-input.days);
   const sources = [
-    input.meta && { name: "메타", days: lastN(input.meta.days), currency: input.meta.currency, spend: (d: SpendDay) => d.spend ?? 0 },
-    input.ads && { name: "구글 광고", days: lastN(input.ads.days), currency: input.ads.currency, spend: (d: SpendDay) => d.cost ?? 0 },
+    input.meta && { name: "메타", all: input.meta.days, days: lastN(input.meta.days), currency: input.meta.currency, spend: (d: SpendDay) => d.spend ?? 0 },
+    input.ads && { name: "구글 광고", all: input.ads.days, days: lastN(input.ads.days), currency: input.ads.currency, spend: (d: SpendDay) => d.cost ?? 0 },
   ].filter((s): s is NonNullable<typeof s> => Boolean(s));
 
   const currencies = [...new Set(sources.map((s) => s.currency))];
@@ -40,6 +45,10 @@ export function buildOverview(input: {
       ? `통화가 달라 합산하지 않음 (${currencies.join(", ")})`
       : sources.map((s) => s.name).join(" + ");
 
+  // 직전 같은 길이 기간(모든 광고 채널에 일별 행이 그만큼 있을 때만).
+  const prevOf = (days: SpendDay[]) => days.slice(-2 * input.days, -input.days);
+  const spendPrev =
+    spend !== null && sources.every((s) => prevOf(s.all).length === input.days) ? sum(sources, (s) => sum(prevOf(s.all), s.spend)) : null;
   const impressions = sources.length ? sum(sources, (s) => sum(s.days, (d) => d.impressions)) : null;
   const clicks = sources.length ? sum(sources, (s) => sum(s.days, (d) => d.clicks)) : null;
   const raw: Omit<FunnelStep, "rateFromPrev" | "meaning">[] = [
@@ -53,7 +62,21 @@ export function buildOverview(input: {
     const rateFromPrev = i > 0 && prev && s.value !== null ? s.value / prev : null;
     return { ...s, rateFromPrev, meaning: meaningFor(s.key, rateFromPrev, s.value, prev ?? null) };
   });
+  const byDate = new Map<string, DailyPoint>();
+  sources.forEach((src) =>
+    src.days.forEach((d, i) => {
+      const key = d.date ?? String(i);
+      const cur = byDate.get(key) ?? { date: d.date ?? key, spend: 0, clicks: 0, impressions: 0 };
+      cur.spend = currencies.length === 1 ? (cur.spend ?? 0) + src.spend(d) : null;
+      cur.clicks += d.clicks;
+      cur.impressions += d.impressions;
+      byDate.set(key, cur);
+    }),
+  );
   return {
+    spendPrev,
+    channels: sources.map((s) => ({ name: s.name, spend: sum(s.days, s.spend) })),
+    daily: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
     verdict: verdictFor({ impressions, clicks, users: input.realUsers, orders: input.orders, bots: input.botUsers ?? null, spend, currency: currencies[0] ?? "KRW" }),
     spend,
     currency: currencies[0] ?? "KRW",

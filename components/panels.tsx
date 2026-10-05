@@ -274,7 +274,8 @@ export function AdsPanel({ a, ga, range }: { a: GoogleAdsSummary; ga: Ga4Summary
   const gaOk = ga && ga.ok ? ga : null;
   const eng = gaOk ? adsEngagement(cur.clicks, cur.cost, findGoogleCpc(gaOk.sources)) : null;
   const money = (v: number) => fmtValue(v, "won", a.currency);
-  const maxCost = Math.max(...a.campaigns.map((x) => x.cost), 1);
+  const topCampaigns = a.campaigns.slice(0, 10);
+  const maxCost = Math.max(...topCampaigns.map((x) => x.cost), 1);
   return (
     <section className="panel">
       <div className="panel-head">
@@ -353,7 +354,7 @@ export function AdsPanel({ a, ga, range }: { a: GoogleAdsSummary; ga: Ga4Summary
                 </tr>
               </thead>
               <tbody>
-                {a.campaigns.map((x) => (
+                {topCampaigns.map((x) => (
                   <tr key={x.name}>
                     <td className="name" title={x.name}>
                       {x.name}

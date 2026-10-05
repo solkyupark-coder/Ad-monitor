@@ -6,6 +6,7 @@ import type { RevenueSummary } from "@/lib/revenue";
 import type { VercelSummary } from "@/lib/vercel";
 import type { YoutubeSummary } from "@/lib/youtube";
 import { compareRevenue } from "@/lib/traffic";
+import { effectHeadline, type EffectReport } from "@/lib/effect";
 
 export type ActionLevel = "bad" | "warn" | "info" | "good";
 export type ActionItem = { level: ActionLevel; area: string; title: string; action: string };
@@ -37,11 +38,14 @@ export function buildActions(x: {
   youtube: YoutubeSummary | null;
   pending: string[]; // 연결 안 된 플랫폼 이름
   verdict?: { level: string; headline: string; action: string } | null; // '한눈에 보기' 결론
+  effect?: EffectReport | null; // 광고 효과 판정(광고비 중 낭비·측정 불가 비중)
 }): ActionItem[] {
   const out: ActionItem[] = [];
   if (x.verdict && (x.verdict.level === "bad" || x.verdict.level === "warn")) {
     out.push({ level: x.verdict.level, area: "광고 퍼널", title: x.verdict.headline, action: x.verdict.action });
   }
+  const fx = x.effect ? effectHeadline(x.effect) : null;
+  if (fx) out.push({ level: fx.level === "good" ? "info" : fx.level, area: "광고 효과", title: fx.headline, action: fx.action });
   const failed = (area: string, s: { ok: boolean; reason?: string } | null) => {
     if (s && !s.ok) out.push({ level: "bad", area, title: `불러오기 실패: ${s.reason}`, action: "카드 안내대로 토큰·권한을 고치거나 다시 연결한다. 고치기 전까지 이 소스 수치는 빠진다." });
   };

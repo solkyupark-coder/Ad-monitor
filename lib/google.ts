@@ -1,7 +1,15 @@
 // 구글 OAuth 공통: refresh token → access token. 토큰 값은 화면·로그에 내지 않는다(오류 코드만 남긴다).
 export type GoogleToken = { ok: true; token: string } | { ok: false; error: string };
 
+// access token을 서버 메모리에 잠시 둔다(디스크·로그·화면에 내지 않음). 요청마다 새 토큰을 받으면 Authorization 헤더가 매번 달라
+// Next의 10분 데이터 캐시가 안 맞아 페이지·내보내기를 열 때마다 GA4·구글 광고 API를 다시 호출하게 된다.
+const TOKEN_TTL_MARGIN_MS = 5 * 60 * 1000;
+const tokenCache = new Map<string, { token: string; exp: number }>();
+export const resetGoogleTokenCache = (): void => tokenCache.clear();
+
 export async function googleToken(refreshToken: string): Promise<GoogleToken> {
+  const hit = tokenCache.get(refreshToken);
+  if (hit && hit.exp > Date.now()) return { ok: true, token: hit.token };
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -13,8 +21,16 @@ export async function googleToken(refreshToken: string): Promise<GoogleToken> {
     }),
     cache: "no-store",
   });
-  const json = (await res.json().catch(() => ({}))) as { access_token?: string; error?: string };
-  if (!res.ok || !json.access_token) return { ok: false, error: json.error ?? `http_${res.status}` };
+  const json = (await res.json().catch(() => ({}))) as { access_token?: string; error?: string; expires_in?: number };
+  if (!res.ok || !json.access_token) {
+    tokenCache.delete(refreshToken);
+    return { ok: false, error: json.error ?? `http_${res.status}` };
+  }
+  const ttl = Math.min(Math.max(0, (json.expires_in ?? 3600) * 1000 - TOKEN_TTL_MARGIN_MS), 50 * 60 * 1000);
+  if (ttl > 0) {
+    if (tokenCache.size >= 8) tokenCache.clear(); // 토큰 종류는 몇 개뿐이라 넉넉한 상한
+    tokenCache.set(refreshToken, { token: json.access_token, exp: Date.now() + ttl });
+  }
   return { ok: true, token: json.access_token };
 }
 

@@ -70,7 +70,7 @@ export async function googleAdsSummary(brand: BrandId, range: DateRange): Promis
       search("SELECT customer.descriptive_name, customer.currency_code FROM customer LIMIT 1"),
       // 날짜는 lib/range 가 형식을 검증한 YYYY-MM-DD 만 들어온다.
       search(`SELECT segments.date, metrics.clicks, metrics.cost_micros, metrics.impressions FROM customer WHERE segments.date BETWEEN '${range.prev.from}' AND '${range.to}' ORDER BY segments.date`),
-      search(`SELECT campaign.name, metrics.clicks, metrics.cost_micros, metrics.impressions FROM campaign WHERE segments.date BETWEEN '${range.from}' AND '${range.to}' AND metrics.impressions > 0 ORDER BY metrics.cost_micros DESC LIMIT 10`),
+      search(`SELECT campaign.name, metrics.clicks, metrics.cost_micros, metrics.impressions FROM campaign WHERE segments.date BETWEEN '${range.from}' AND '${range.to}' AND metrics.impressions > 0 ORDER BY metrics.cost_micros DESC LIMIT 50`),
     ]);
     const bad = [infoRes, dayRes].find((r) => !r.ok);
     if (bad) {

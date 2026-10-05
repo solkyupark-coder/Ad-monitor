@@ -2,7 +2,8 @@
 import { googleToken, logFailure, tokenFailureReason } from "@/lib/google";
 import { BRANDS, type BrandId } from "@/lib/platforms";
 import type { DateRange } from "@/lib/range";
-import { excludeSuspect, splitTraffic, flagSources, type FlaggedGeo, type FlaggedSource, type GeoRow, type SourceRow, type Totals, type TrafficSplit } from "@/lib/traffic";
+import type { GaCampaignRow } from "@/lib/effect";
+import { DATACENTER_CITIES, excludeSuspect, splitTraffic, flagSources, type FlaggedGeo, type FlaggedSource, type GeoRow, type SourceRow, type Totals, type TrafficSplit } from "@/lib/traffic";
 
 export type Ga4Totals = {
   activeUsers: number;
@@ -28,6 +29,8 @@ export type Ga4Summary =
       split: TrafficSplit; // 선택 기간 의심 트래픽 분리
       splitPrev: TrafficSplit;
       geoTruncated: boolean;
+      campaigns: GaCampaignRow[] | null; // 캠페인×소스/매체 유입(데이터센터 도시 제외). 못 읽으면 null
+      campaignsTruncated: boolean; // 행이 많아 일부만 읽음
     }
   | { ok: false; reason: string };
 
@@ -35,6 +38,7 @@ type GaRow = { dimensionValues?: { value: string }[]; metricValues?: { value: st
 type GaResp = { rows?: GaRow[]; rowCount?: number; metadata?: { currencyCode?: string } };
 
 const GEO_LIMIT = 250;
+const CAMPAIGN_LIMIT = 250;
 
 const num = (r: GaRow, i: number) => Number(r.metricValues?.[i]?.value ?? 0);
 
@@ -67,6 +71,8 @@ export function assembleGa4(input: {
   geoCur: GeoRow[];
   geoPrev: GeoRow[];
   geoTruncated: boolean;
+  campaigns?: GaCampaignRow[] | null;
+  campaignsTruncated?: boolean;
 }): Ga4Summary {
   const sCur = splitTraffic(input.geoCur, input.total.activeUsers, input.total.sessions);
   const sPrev = splitTraffic(input.geoPrev, input.totalPrev.activeUsers, input.totalPrev.sessions);
@@ -82,6 +88,8 @@ export function assembleGa4(input: {
     split: sCur.split,
     splitPrev: sPrev.split,
     geoTruncated: input.geoTruncated,
+    campaigns: input.campaigns ?? null,
+    campaignsTruncated: input.campaignsTruncated ?? false,
   };
 }
 
@@ -114,7 +122,16 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
         orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
         limit: GEO_LIMIT,
       });
-    const [ov, src, geo, geoPrev] = await Promise.all([
+    // 광고 효과 판정용: 캠페인 이름 × 소스/매체. 데이터센터 도시는 요청 단계에서 뺀다(차원에 없어도 필터 가능).
+    const campaignReport = run({
+      dateRanges: [rCur],
+      dimensions: [{ name: "sessionCampaignName" }, { name: "sessionSourceMedium" }],
+      metrics: ["sessions", "engagedSessions", "userEngagementDuration"].map((name) => ({ name })),
+      dimensionFilter: { notExpression: { filter: { fieldName: "city", inListFilter: { values: DATACENTER_CITIES } } } },
+      orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
+      limit: CAMPAIGN_LIMIT,
+    });
+    const [ov, src, geo, geoPrev, camp] = await Promise.all([
       run({
         dateRanges: [rCur, rPrev],
         metrics: ["activeUsers", "sessions", "engagedSessions", "userEngagementDuration", "ecommercePurchases", "purchaseRevenue"].map((name) => ({ name })),
@@ -128,6 +145,7 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
       }),
       geoReport(rCur),
       geoReport(rPrev),
+      campaignReport,
     ]);
     const bad = [ov, src, geo, geoPrev].find((r) => !r.ok);
     if (bad) {
@@ -174,6 +192,21 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
       }));
     const geoJson = (await geo.json()) as GaResp;
     const geoPrevJson = (await geoPrev.json()) as GaResp;
+    let campaigns: GaCampaignRow[] | null = null;
+    let campaignsTruncated = false;
+    if (camp.ok) {
+      const campJson = (await camp.json()) as GaResp;
+      campaignsTruncated = (campJson.rowCount ?? campJson.rows?.length ?? 0) > CAMPAIGN_LIMIT;
+      campaigns = (campJson.rows ?? []).map((r) => ({
+        campaign: r.dimensionValues?.[0]?.value ?? "(not set)",
+        sourceMedium: r.dimensionValues?.[1]?.value ?? "",
+        sessions: num(r, 0),
+        engagedSessions: num(r, 1),
+        engagementSec: num(r, 2),
+      }));
+    } else {
+      logFailure("ga4", brand, `campaign report ${camp.status}`); // 효과 판정만 빠지고 나머지 카드는 그대로
+    }
     return assembleGa4({
       currency: ovJson.metadata?.currencyCode ?? "",
       total,
@@ -182,6 +215,8 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
       geoCur: toGeo(geoJson),
       geoPrev: toGeo(geoPrevJson),
       geoTruncated: [geoJson, geoPrevJson].some((j) => (j.rowCount ?? j.rows?.length ?? 0) > GEO_LIMIT),
+      campaigns,
+      campaignsTruncated,
     });
   } catch (e) {
     logFailure("ga4", brand, `network ${e instanceof Error ? e.message : String(e)}`);

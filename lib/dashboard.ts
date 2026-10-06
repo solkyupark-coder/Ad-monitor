@@ -69,6 +69,7 @@ export async function loadDashboard(brand: BrandId, range: DateRange, skip: { yo
     ads: ads && ads.ok ? { days: ads.days, currency: ads.currency } : null,
     realUsers: ga && ga.ok ? ga.real.activeUsers : null,
     botUsers: ga && ga.ok ? ga.split.suspectUsers : null,
+    internalUsers: ga && ga.ok && ga.internal ? ga.internal.users : null,
     orders: rev && rev.ok ? rev.orders : null,
     days: range.days,
     today: range.today,

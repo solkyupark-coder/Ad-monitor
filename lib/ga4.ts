@@ -5,6 +5,7 @@ import type { DateRange } from "@/lib/range";
 import type { GaCampaignRow } from "@/lib/effect";
 import { blocklistFor, ga4BlockedExpression, isBlockedSource } from "@/lib/blocklist";
 import { gaDateHour, type CountHour } from "@/lib/hourly";
+import { ga4InternalExpression, ga4NotInternalExpression, internalCitiesFor } from "@/lib/internal";
 import { DATACENTER_CITIES, excludeSuspect, splitTraffic, flagSources, type FlaggedGeo, type FlaggedSource, type GeoRow, type SourceRow, type Totals, type TrafficSplit } from "@/lib/traffic";
 
 export type Ga4Totals = {
@@ -36,6 +37,7 @@ export type Ga4Summary =
       hourly: CountHour[] | null; // 1일 보기(어제·오늘)에서만: 시간별 실사용자(전날부터). 못 읽거나 1일 보기가 아니면 null
       daily: { date: string; users: number }[] | null; // 일별 실사용자(직전 기간부터): 데이터센터 도시·PTC 유입 제외. 못 읽으면 null
       blocked: { sessions: number; users: number } | null; // 리워드·클릭팜(PTC) 유입으로 보고 위 모든 수치에서 뺀 양. 못 읽으면 null
+      internal: { cities: string[]; sessions: number; users: number } | null; // 운영자 본인 접속(INTERNAL_EXCLUDE_CITIES 도시)으로 보고 위 모든 수치에서 뺀 양. 설정이 없거나 못 읽으면 null
     }
   | { ok: false; reason: string };
 
@@ -79,6 +81,7 @@ export function assembleGa4(input: {
   campaigns?: GaCampaignRow[] | null;
   campaignsTruncated?: boolean;
   blocked?: { sessions: number; users: number } | null;
+  internal?: { cities: string[]; sessions: number; users: number } | null;
   daily?: { date: string; users: number }[] | null;
   hourly?: CountHour[] | null;
 }): Ga4Summary {
@@ -99,6 +102,7 @@ export function assembleGa4(input: {
     campaigns: input.campaigns ?? null,
     campaignsTruncated: input.campaignsTruncated ?? false,
     blocked: input.blocked ?? null,
+    internal: input.internal ?? null,
     daily: input.daily ?? null,
     hourly: input.hourly ?? null,
   };
@@ -121,7 +125,9 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
     // 리워드·클릭팜(PTC) 유입은 요청 단계에서 빼서 합계·소스·지역·캠페인 수치가 서로 어긋나지 않게 한다.
     const blockList = blocklistFor(prefix);
     const ptcFilter = ga4BlockedExpression(blockList);
-    const notPtc = { notExpression: ptcFilter };
+    // 운영자 본인 접속(도시 기준)도 같은 방식으로 요청 단계에서 뺀다. 설정이 없으면 PTC 필터만.
+    const internalCities = internalCitiesFor(prefix);
+    const notPtc = internalCities.length ? { andGroup: { expressions: [{ notExpression: ptcFilter }, ga4NotInternalExpression(internalCities)] } } : { notExpression: ptcFilter };
     const run = (body: object) =>
       fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`, {
         method: "POST",
@@ -153,6 +159,14 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
       metrics: ["sessions", "activeUsers"].map((name) => ({ name })),
       dimensionFilter: ptcFilter,
     });
+    // 본인(운영자) 접속으로 보고 뺀 양(PTC는 이미 따로 뺀 것이라 겹치지 않게 제외).
+    const internalReport = internalCities.length
+      ? run({
+          dateRanges: [rCur],
+          metrics: ["sessions", "activeUsers"].map((name) => ({ name })),
+          dimensionFilter: { andGroup: { expressions: [ga4InternalExpression(internalCities), { notExpression: ptcFilter }] } },
+        })
+      : null;
     // 그래프용 일별 실사용자(직전 기간부터 한 번에). 데이터센터 도시와 PTC 유입은 요청 단계에서 뺀다.
     const dailyReport = run({
       dateRanges: [{ startDate: range.prev.from, endDate: range.to }],
@@ -173,7 +187,7 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
           limit: 100,
         })
       : null;
-    const [ov, src, geo, geoPrev, camp, ptc, dayRes, hourRes] = await Promise.all([
+    const [ov, src, geo, geoPrev, camp, ptc, dayRes, hourRes, intRes] = await Promise.all([
       run({
         dateRanges: [rCur, rPrev],
         dimensionFilter: notPtc,
@@ -193,6 +207,7 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
       ptcReport,
       dailyReport,
       hourlyReport,
+      internalReport,
     ]);
     const bad = [ov, src, geo, geoPrev].find((r) => !r.ok);
     if (bad) {
@@ -261,6 +276,15 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
     } else {
       logFailure("ga4", brand, `ptc report ${ptc.status}`);
     }
+    let internal: { cities: string[]; sessions: number; users: number } | null = null;
+    if (intRes) {
+      if (intRes.ok) {
+        const row = ((await intRes.json()) as GaResp).rows?.[0];
+        internal = { cities: internalCities, sessions: row ? num(row, 0) : 0, users: row ? num(row, 1) : 0 };
+      } else {
+        logFailure("ga4", brand, `internal report ${intRes.status}`); // '본인 제외 N명' 표시만 빠진다
+      }
+    }
     let daily: { date: string; users: number }[] | null = null;
     if (dayRes.ok) {
       const rows = (((await dayRes.json()) as GaResp).rows ?? []).flatMap((r) => {
@@ -293,6 +317,7 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
       campaigns,
       campaignsTruncated,
       blocked,
+      internal,
       daily,
       hourly,
     });

@@ -28,6 +28,7 @@ export function buildOverview(input: {
   ads: { days: SpendDay[]; currency: string } | null;
   realUsers: number | null; // GA4 봇 제외 조회 기간 활성 사용자
   botUsers?: number | null; // GA4 봇 의심으로 뺀 사용자
+  internalUsers?: number | null; // 본인(운영자) 접속으로 뺀 사용자(도시 기준). 0·null 이면 표시 안 함
   orders: number | null; // 조회 기간 실제 결제 건수
   days: number; // 조회 기간 일수(광고 일별 행의 마지막 N일을 쓴다)
   today?: boolean; // 오늘 보기(하루가 안 끝남): 어제 전체와 견주지 않는다
@@ -55,7 +56,7 @@ export function buildOverview(input: {
   const raw: Omit<FunnelStep, "rateFromPrev" | "meaning">[] = [
     { key: "impressions", label: "광고 노출", note: spendNote, value: impressions },
     { key: "clicks", label: "광고 클릭", note: spendNote, value: clicks },
-    { key: "users", label: "사이트 실사용자", note: "GA4 · 봇 의심 제외 · 광고 외 유입 포함", value: input.realUsers },
+    { key: "users", label: "사이트 실사용자", note: `GA4 · 봇 의심 제외${input.internalUsers ? ` · 본인 제외 ${input.internalUsers.toLocaleString("ko-KR")}명` : ""} · 광고 외 유입 포함`, value: input.realUsers },
     { key: "orders", label: "실제 결제", note: "Polar / Supabase 결제 완료", value: input.orders },
   ];
   // 1일 보기는 표본이 작아 '낭비·봇·결제 0건' 같은 단정을 하지 않는다: 단계 해석은 참고(info)로 낮춘다.

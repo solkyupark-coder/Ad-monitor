@@ -137,6 +137,7 @@ export function demoGa4(r: DateRange): Ga4Summary {
     daily: demoDays(r).map((date, i) => ({ date, users: Math.round(60 + 18 * Math.sin(i / 1.9) + (i >= r.days ? 10 : 0)) })),
     hourly: r.days === 1 ? demoHours(r).map((h) => ({ ...h, value: Math.round(5 + 4 * Math.sin(h.hour / 3)) })) : null,
     blocked: { sessions: Math.round(310 * k), users: Math.round(240 * k) },
+    internal: { cities: ["Gwacheon-si"], sessions: Math.round(14 * k), users: Math.round(11 * k) },
     campaigns: campaigns.map((c) => ({ ...c, sessions: Math.round(c.sessions * k), engagedSessions: Math.round(c.engagedSessions * k), engagementSec: c.engagementSec * k })),
   });
 }

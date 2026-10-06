@@ -46,6 +46,11 @@ export function Ga4Panel({ g, range }: { g: Ga4Summary; range: DateRange }) {
           리워드·클릭팜(PTC) 유입은 모든 수치에서 뺐습니다 — 세션 {n(g.blocked.sessions)} · 사용자 {n(g.blocked.users)}명 제외
         </p>
       )}
+      {g.internal && (
+        <p className="fine">
+          본인(운영자) 접속 제외 — {g.internal.cities.join("·")} 접속 사용자 {n(g.internal.users)}명 · 세션 {n(g.internal.sessions)} 은 모든 수치에서 뺐습니다(도시 기준이라 같은 도시의 다른 방문자도 함께 빠집니다)
+        </p>
+      )}
       <div className="kpis">
         <Stat label="실사용자" value={`${n(real.activeUsers)}명`} hero>
           <Delta cur={real.activeUsers} prev={realPrev?.activeUsers ?? null} goodWhen="up" />

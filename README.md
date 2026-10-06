@@ -94,6 +94,18 @@ cashlee.co, ad2click.co 같은 "클릭하면 돈 주는" 사이트에서 오는 
 - **국내 리워드(앱테크) 앱**: `cashtree.co`·`cashwalk.com`·`cashslide.co.kr`·`adpopcorn.com`을 목록에 넣었고, 이름 패턴으로 `cashtree`·`cashwalk`·`cashslide`·`cashthat`·`cashmong`·`cashhour`·`cashdoc`·`cashcharge`·`adpopcorn`도 건다. `cash` 전체를 거는 패턴은 `cashew`·`cashier`·`cashback` 같은 정상 단어를 잡으므로 쓰지 않았다. 토스(`toss.im`)는 리워드 전용 주소를 확인하지 못했고 통째로 막으면 일반 토스 유입까지 사라지므로 기본 목록에 넣지 않았다 — 원하면 `REFERRER_BLOCKLIST=toss.im`으로 추가한다. 다른 앱(캐시댓 등)은 같은 방식으로 `REFERRER_BLOCKLIST`·`REFERRER_BLOCK_PATTERNS`에 더한다.
 - **한계**: 리퍼러를 숨기는 PTC 트래픽(소스가 `(direct)`로 찍힘)은 도메인으로 가려낼 수 없다. 그런 경우는 기존 "의심 트래픽"(데이터센터 도시·참여 5초 미만) 판정이 따로 걸러 준다. Vercel 일별 차감은 선택 기간 상위 100개 유입 도메인 안에서만 찾는다.
 
+
+## 본인(운영자) 접속 제외 (`lib/internal.ts`)
+
+내가 직접 접속한 기록이 방문자로 잡히는 것(예: 직접 유입 11명이 전부 과천)을 GA4 도시 기준으로 뺀다.
+
+- **설정**: `INTERNAL_EXCLUDE_CITIES=Gwacheon-si`(두 브랜드 공통, 쉼표 구분, GA4 `city` 값 그대로·대소문자 무시). 한 브랜드만이면 `HOUSCAPER_INTERNAL_EXCLUDE_CITIES` / `TOPOGENESIS_INTERNAL_EXCLUDE_CITIES`(공통 값에 더해진다). 설정이 없으면 아무것도 빼지 않는다. 값은 GA4 → 보고서 → 지역(도시)에서 보이는 철자를 그대로 쓴다.
+- **적용**: 합계·소스/매체·지역·캠페인·일별·시간별 실사용자 요청에서 모두 요청 단계에서 뺀다(PTC 제외와 같은 방식). 뺀 양은 GA4 패널 위와 한눈에 보기 "사이트 실사용자" 줄에 "본인 제외 N명"으로 보인다.
+- **한계**: 도시 기준이라 같은 도시의 다른 방문자도 함께 빠진다(운영자가 사는 곳이 인구가 큰 도시면 가린다 — 과천처럼 작은 도시에서만 권한다). 집·사무실·모바일 데이터에서 도시가 다르게 찍히면 그 도시도 추가한다. Vercel Web Analytics 방문자는 도시 필터를 쓰지 않아 이 제외가 적용되지 않는다.
+- **더 정확한 방법(제안, 이 대시보드 밖의 설정)**:
+  1. **GA4 내부 트래픽 필터** — 관리 → 데이터 스트림 → 태그 설정 → 내부 트래픽 정의(IP 주소 규칙) → 관리 → 데이터 필터에서 "Internal Traffic"을 *활성*으로. 고정 IP가 있을 때 가장 정확하다.
+  2. **쿠키 표시** — 사이트(앱) 쪽에서 운영자가 로그인했거나 `?internal=1`로 한 번 들어오면 쿠키를 심고, 그 쿠키가 있으면 `gtag('set', { traffic_type: 'internal' })`를 보낸다. GA4 데이터 필터가 `traffic_type = internal`을 걸러 준다. 도시가 바뀌어도 되고 같은 도시의 다른 방문자를 지우지 않는다.
+
 ## 구글 광고: 관리자(MCC) 로그인 ID와 `USER_PERMISSION_DENIED`
 - `GOOGLE_ADS_LOGIN_CUSTOMER_ID`(공통)는 **관리자 계정 아래에 있는 고객 계정**을 읽을 때만 필요하다. 관리자 아래가 아닌 계정(직접 초대받은 계정)에 이 헤더를 보내면 `USER_PERMISSION_DENIED`가 난다. 두 브랜드 계정의 위치가 다를 수 있으므로 **브랜드별 값**이 공통 값보다 우선한다: `{HOUSCAPER|TOPOGENESIS}_GOOGLE_ADS_LOGIN_CUSTOMER_ID`. 관리자 없이 직접 접근하는 계정이면 `none`으로 둔다(헤더를 아예 보내지 않음).
 - 설정을 잘못 맞춰도 읽히게 하려고, 헤더를 보냈는데 권한 오류가 나면 **헤더 없이 한 번 더** 시도하고 성공하면 그 사실을 구글 광고 카드 위에 알린다. 둘 다 거절되면 오류 문구에 보낸 로그인 ID, 고객 ID, 확인할 것(하이픈 없는 10자리 / 토큰 발급 계정이 그 고객 또는 관리자에 사용자로 초대돼 있는지)이 나온다.

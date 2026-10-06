@@ -31,6 +31,7 @@ export type MovedAd = {
   why: string; // 옮긴 이유(이름 규칙 / 링크 규칙)
   days: DayRow[]; // [직전 기간 시작 … 기간 끝] 일별
   hours?: AdHour[]; // 1일 보기에서만: 시간별(전날부터)
+  orig?: string; // 받는 쪽 통화로 환산했을 때의 원통화 금액 표기(예: "원통화 16,286원")
 };
 
 const BRAND_IDS: BrandId[] = ["houscaper", "topogenesis"];

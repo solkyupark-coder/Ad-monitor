@@ -47,6 +47,7 @@ export function OverviewPanel({ o, range, costPerEngaged, combo, brandLabel }: {
           <p className="hero-num">{money(o.spend, "-")}</p>
           {o.spend !== null && <Delta cur={o.spend} prev={o.spendPrev} goodWhen="neutral" />}
           {o.spend === null && <span className="delta flat">{o.spendNote}</span>}
+          {o.spend !== null && o.fxNote && <p className="fine">{o.fxNote}</p>}
           {o.spend !== null && spendTotal > 0 && o.channels.length > 0 && (
             <>
               <div className="share" role="img" aria-label={`채널별 광고비: ${o.channels.map((c) => `${c.name} ${Math.round((c.spend / spendTotal) * 100)}%`).join(", ")}`}>

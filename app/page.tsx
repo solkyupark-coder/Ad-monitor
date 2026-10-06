@@ -159,6 +159,7 @@ function MetaPanel({ m, range }: { m: MetaSummary; range: DateRange }) {
                         <StateBadge state={c.state} raw={c.status} />
                         {c.paidBy && <span className="vchip warn" title="이 광고비는 다른 브랜드의 광고 계정에서 결제됐습니다">{c.paidBy}</span>}
                         {c.promo && !c.paidBy && <span className="vchip hold">프로모션</span>}
+                        {c.orig && <span className="vchip" title="통화가 달라 고정 환율로 환산한 금액입니다">{c.orig}</span>}
                         {st && (
                           <span className={`vchip ${st.level}`}>
                             <LevelIcon level={st.level} size={10} />

@@ -376,10 +376,11 @@ export function AdsPanel({ a, ga, range }: { a: GoogleAdsSummary; ga: Ga4Summary
                   <tr key={x.name} className={isStopped(x.state) ? "off" : undefined}>
                     <td className="name wrap" title={x.name}>
                       <span className="nm">{x.name}</span>
-                      {(x.state && x.state !== "unknown") || x.paidBy ? (
+                      {(x.state && x.state !== "unknown") || x.paidBy || x.orig ? (
                         <span className="tags">
                           <StateBadge state={x.state} />
                           {x.paidBy && <span className="vchip warn" title="이 광고비는 다른 브랜드의 광고 계정에서 결제됐습니다">{x.paidBy}</span>}
+                          {x.orig && <span className="vchip" title="통화가 달라 고정 환율로 환산한 금액입니다">{x.orig}</span>}
                         </span>
                       ) : null}
                     </td>

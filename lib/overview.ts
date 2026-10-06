@@ -1,4 +1,5 @@
 // '한눈에' 퍼널 계산(순수 함수). 광고 노출 → 광고 클릭 → 사이트 실사용자(봇 제외) → 실제 결제.
+import { fxRates, planCurrency } from "@/lib/fx";
 type Day = { date?: string; impressions: number; clicks: number };
 type SpendDay = Day & { spend?: number; cost?: number };
 
@@ -16,6 +17,7 @@ export type Overview = {
   spend: number | null;
   currency: string;
   spendNote: string;
+  fxNote: string | null; // 통화가 섞여 원화로 환산했을 때: 원통화 + 환율 설명
   steps: FunnelStep[];
   costPerUser: number | null;
   costPerOrder: number | null;
@@ -39,18 +41,22 @@ export function buildOverview(input: {
     input.ads && { name: "구글 광고", all: input.ads.days, days: lastN(input.ads.days), currency: input.ads.currency, spend: (d: SpendDay) => d.cost ?? 0 },
   ].filter((s): s is NonNullable<typeof s> => Boolean(s));
 
-  const currencies = [...new Set(sources.map((s) => s.currency))];
-  const spend = sources.length && currencies.length === 1 ? sum(sources, (s) => sum(s.days, s.spend)) : null;
+  // 지출이 0인 통화는 무시한다. 지출 있는 통화가 둘 이상이면(예: 메타 USD + 구글 KRW) 환율(고정·env)로 원화 환산해 합친다.
+  const plan = planCurrency(sources.map((s) => ({ currency: s.currency, spend: sum(s.days, s.spend) })), fxRates());
+  const convertible = plan.currency !== null && sources.every((s) => plan.mult(s.currency) !== null || sum(s.days, s.spend) === 0);
+  const m = (cur: string) => plan.mult(cur) ?? 0;
+  const spend = sources.length && convertible ? sum(sources, (s) => sum(s.days, s.spend) * m(s.currency)) : null;
   const spendNote = !sources.length
     ? "광고 연결 없음"
-    : currencies.length > 1
-      ? `통화가 달라 합산하지 않음 (${currencies.join(", ")})`
+    : !convertible
+      ? `통화가 달라 합산하지 않음 (${[...new Set(sources.map((s) => s.currency))].join(", ")}) — 환율을 모르는 통화가 있습니다(FX_RATES로 추가)`
       : sources.map((s) => s.name).join(" + ");
 
   // 직전 같은 길이 기간(모든 광고 채널에 일별 행이 그만큼 있을 때만).
   const prevOf = (days: SpendDay[]) => days.slice(-2 * input.days, -input.days);
+  const prevOk = sources.every((s) => plan.mult(s.currency) !== null || sum(prevOf(s.all), s.spend) === 0);
   const spendPrev =
-    !input.today && spend !== null && sources.every((s) => prevOf(s.all).length === input.days) ? sum(sources, (s) => sum(prevOf(s.all), s.spend)) : null;
+    !input.today && spend !== null && prevOk && sources.every((s) => prevOf(s.all).length === input.days) ? sum(sources, (s) => sum(prevOf(s.all), s.spend) * m(s.currency)) : null;
   const impressions = sources.length ? sum(sources, (s) => sum(s.days, (d) => d.impressions)) : null;
   const clicks = sources.length ? sum(sources, (s) => sum(s.days, (d) => d.clicks)) : null;
   const raw: Omit<FunnelStep, "rateFromPrev" | "meaning">[] = [
@@ -71,7 +77,7 @@ export function buildOverview(input: {
     src.days.forEach((d, i) => {
       const key = d.date ?? String(i);
       const cur = byDate.get(key) ?? { date: d.date ?? key, spend: 0, clicks: 0, impressions: 0 };
-      cur.spend = currencies.length === 1 ? (cur.spend ?? 0) + src.spend(d) : null;
+      cur.spend = convertible ? (cur.spend ?? 0) + src.spend(d) * m(src.currency) : null;
       cur.clicks += d.clicks;
       cur.impressions += d.impressions;
       byDate.set(key, cur);
@@ -79,7 +85,7 @@ export function buildOverview(input: {
   );
   return {
     spendPrev,
-    channels: sources.map((s) => ({ name: s.name, spend: sum(s.days, s.spend) })),
+    channels: sources.map((s) => ({ name: s.name, spend: sum(s.days, s.spend) * m(s.currency) })),
     daily: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
     verdict:
       input.days <= 1
@@ -89,10 +95,11 @@ export function buildOverview(input: {
             detail: "하루는 표본이 작아 '봇 의심·낭비 의심·결제 없음' 같은 결론을 내리지 않습니다. 아래 시간별 그래프는 어떤 시간대에 광고비·클릭·사용자가 움직였는지 보는 용도입니다.",
             action: "추세 판단은 7일 이상으로 보고, 오늘은 새로 켠 캠페인이 제대로 돌기 시작했는지(노출·클릭이 붙는지)만 확인한다.",
           }
-        : verdictFor({ impressions, clicks, users: input.realUsers, orders: input.orders, bots: input.botUsers ?? null, spend, currency: currencies[0] ?? "KRW" }),
+        : verdictFor({ impressions, clicks, users: input.realUsers, orders: input.orders, bots: input.botUsers ?? null, spend, currency: plan.currency ?? "KRW" }),
     spend,
-    currency: currencies[0] ?? "KRW",
+    currency: plan.currency ?? "KRW",
     spendNote,
+    fxNote: convertible ? plan.note : null,
     steps,
     costPerUser: spend !== null && input.realUsers ? spend / input.realUsers : null,
     costPerOrder: spend !== null && input.orders ? spend / input.orders : null,

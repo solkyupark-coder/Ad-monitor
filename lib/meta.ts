@@ -17,6 +17,7 @@ export type MetaCampaign = {
   state?: CampaignState; // 집행 중 / 중지됨 / 삭제됨 — 캠페인·광고 상태로 정한다(부스트 포함)
   promo?: boolean; // 인스타·페이스북 프로모션(부스트)로 보이는 캠페인
   paidBy?: string; // 다른 브랜드 광고 계정에서 결제돼 이 브랜드로 옮겨 온 캠페인이면 그 표시(예: "Houscaper 계정에서 결제됨")
+  orig?: string; // 통화가 달라 환산했으면 원통화 금액 표기(예: "원통화 16,286원")
 };
 // 브랜드가 쓰는 광고 계정 하나. 인스타그램 프로모션(비즈니스 스위트)은 Ads Manager 계정과 다른 광고 계정에 생기는 경우가 많다.
 export type MetaAccountRole = "main" | "extra" | "discovered";

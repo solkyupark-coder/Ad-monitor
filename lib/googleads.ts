@@ -10,7 +10,7 @@ import type { CampaignSeries } from "@/lib/events";
 import { subtractHours, type AdHour } from "@/lib/hourly";
 
 export type AdsDay = { date: string; clicks: number; cost: number; impressions: number };
-export type AdsCampaign = { name: string; clicks: number; cost: number; impressions: number; paidBy?: string; state?: CampaignState }; // state: 집행 중 / 중지됨 / 삭제됨(campaign.status 기준) // paidBy: 다른 브랜드 계정에서 결제돼 옮겨 온 캠페인 표시
+export type AdsCampaign = { name: string; clicks: number; cost: number; impressions: number; paidBy?: string; orig?: string; state?: CampaignState }; // state: 집행 중 / 중지됨 / 삭제됨(campaign.status 기준) // paidBy: 다른 브랜드 계정에서 결제돼 옮겨 온 캠페인 표시
 export type GoogleAdsSummary =
   | { ok: true; accountName: string; currency: string; days: AdsDay[]; campaigns: AdsCampaign[]; notes: string[]; moved: MovedAd[]; series: CampaignSeries[]; hours: AdHour[] | null }
   | { ok: false; reason: string };

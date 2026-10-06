@@ -123,6 +123,8 @@ export const OPTIONAL_ENV = [
   "REFERRER_ALLOWLIST", // 패턴에 잘못 걸린 정상 도메인을 풀어 줌
   "INTERNAL_EXCLUDE_CITIES", // 운영자 본인 접속을 GA4 도시 기준으로 제외(쉼표 구분, 예: Gwacheon-si)
   "{BRAND}_INTERNAL_EXCLUDE_CITIES", // 위와 같은 용도, 그 브랜드만(공통 값에 더해짐)
+  "FX_USD_KRW", // 통화가 섞인 광고비(예: 메타 USD + 구글 KRW)를 원화로 합칠 때 쓰는 달러 환율(원). 기본 1400 — 실시간 환율이 아니라 고정값
+  "FX_RATES", // 통화별 환율 추가·덮어쓰기: "USD=1380,JPY=9.2,EUR=1500"
   "AD_REASSIGN_RULES", // 다른 브랜드 광고로 옮길 이름 규칙: "패턴=>브랜드; …" (기본: 이름에 topo → topogenesis)
   "AD_REASSIGN_LINK_HOSTS", // 링크 도메인 규칙: "도메인=>브랜드; …" (기본: topogenesis.xyz)
   "AD_REASSIGN_EXCEPT", // 옮기지 않을 이름 패턴(예외)

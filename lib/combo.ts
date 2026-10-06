@@ -2,6 +2,7 @@
 import { eachDay, type DateRange } from "@/lib/range";
 import type { AdEvent } from "@/lib/events";
 import type { AdHour, CountHour } from "@/lib/hourly";
+import { fxRates, planCurrency } from "@/lib/fx";
 
 export type ComboDay = { date: string; h?: number; spend: number | null; users: number | null; clicks: number | null; orders: number | null };
 export type CompareRow = { key: "spend" | "clicks" | "users" | "orders"; label: string; cur: number; prev: number; won: boolean };
@@ -31,22 +32,25 @@ export function buildCombo(x: {
   const { range } = x;
   const notes: string[] = [];
   const sides = [x.meta, x.ads].filter((s): s is NonNullable<typeof s> => !!s);
-  const currencies = [...new Set(sides.map((s) => s.currency))];
-  const spendOk = sides.length > 0 && currencies.length === 1;
-  if (currencies.length > 1) notes.push(`광고비 통화가 달라(${currencies.join(", ")}) 광고비 막대는 그리지 않습니다.`);
+  // 지출이 0인 통화는 무시하고, 지출 있는 통화가 둘 이상이면 환율(고정·env)로 원화 환산해 합친다.
+  const plan = planCurrency(sides.map((s) => ({ currency: s.currency, spend: s.days.reduce((a, d) => a + d.spend, 0) })), fxRates());
+  const spendOk = sides.length > 0 && plan.currency !== null;
+  if (sides.length > 1 && plan.currency === null) notes.push(`광고비 통화가 달라(${[...new Set(sides.map((s) => s.currency))].join(", ")}) 환율을 몰라 광고비 막대는 그리지 않습니다 — FX_RATES로 환율을 추가하세요.`);
+  if (plan.note) notes.push(`광고비 막대는 ${plan.note}`);
+  const mults = sides.map((s) => plan.mult(s.currency) ?? 0);
   const by = <T extends { date: string }>(rows: T[] | null) => new Map((rows ?? []).map((r) => [r.date, r]));
   const spendBy = sides.map((s) => by(s.days));
   const usersBy = by(x.users);
   const ordersBy = by(x.orders);
   const day = (date: string): ComboDay => ({
     date,
-    spend: spendOk ? spendBy.reduce((a, m) => a + (m.get(date)?.spend ?? 0), 0) : null,
+    spend: spendOk ? spendBy.reduce((a, m, i) => a + (m.get(date)?.spend ?? 0) * mults[i], 0) : null,
     clicks: sides.length ? spendBy.reduce((a, m) => a + (m.get(date)?.clicks ?? 0), 0) : null,
     users: x.users ? usersBy.get(date)?.users ?? 0 : null,
     orders: x.orders ? ordersBy.get(date)?.orders ?? 0 : null,
   });
   return {
-    currency: spendOk ? currencies[0] : null,
+    currency: spendOk ? plan.currency : null,
     granularity: "day",
     nowHour: null,
     usersLabel: "실사용자",
@@ -75,15 +79,17 @@ export function buildHourCombo(x: {
   const last = range.today && range.nowHour !== null ? range.nowHour : 23;
   const notes: string[] = [];
   const sides = [x.meta && { name: "메타", ...x.meta }, x.ads && { name: "구글 광고", ...x.ads }].filter((s): s is NonNullable<typeof s> => !!s);
-  const currencies = [...new Set(sides.map((s) => s.currency))];
   const hourly = sides.filter((s) => s.hours !== null);
+  const plan = planCurrency(hourly.map((s) => ({ currency: s.currency, spend: (s.hours ?? []).reduce((a, h) => a + h.spend, 0) })), fxRates());
   const missing = sides.filter((s) => s.hours === null);
   // 광고 소스가 하나라도 시간별을 못 읽었으면 합계가 작아지므로 광고비·클릭 시간별은 그리지 않고 하루 합계만 알린다.
   const adsOk = hourly.length > 0 && missing.length === 0;
-  const spendOk = adsOk && currencies.length === 1;
+  const spendOk = adsOk && plan.currency !== null;
   const fmtMoney = (v: number, c: string) => (c === "KRW" ? `${Math.round(v).toLocaleString("ko-KR")}원` : `${v.toFixed(2)} ${c}`);
   for (const s of missing) notes.push(`${s.name} 시간별 데이터를 읽지 못해 시간별 광고비·클릭은 그리지 않습니다 — 하루 합계: 광고비 ${fmtMoney(s.dayTotal.spend, s.currency)} · 클릭 ${Math.round(s.dayTotal.clicks).toLocaleString("ko-KR")}번`);
-  if (adsOk && currencies.length > 1) notes.push(`광고비 통화가 달라(${currencies.join(", ")}) 시간별 광고비 막대는 그리지 않습니다.`);
+  if (adsOk && hourly.length > 1 && plan.currency === null) notes.push(`광고비 통화가 달라(${[...new Set(hourly.map((s) => s.currency))].join(", ")}) 환율을 몰라 시간별 광고비 막대는 그리지 않습니다 — FX_RATES로 환율을 추가하세요.`);
+  if (adsOk && plan.note) notes.push(`시간별 광고비 막대는 ${plan.note}`);
+  const mults = hourly.map((s) => plan.mult(s.currency) ?? 0);
   if (!x.users && x.usersDayTotal !== null) notes.push(`GA4·Vercel 시간별 데이터가 없어 사용자 선은 숨깁니다 — 하루 합계 ${x.usersDayTotal.toLocaleString("ko-KR")}명`);
   if (!x.orders && x.ordersDayTotal !== null) notes.push(`결제 시간별 데이터가 없어 마커는 숨깁니다 — 하루 합계 ${x.ordersDayTotal}건`);
 
@@ -94,7 +100,7 @@ export function buildHourCombo(x: {
   const point = (date: string, h: number, live: boolean): ComboDay => ({
     date,
     h,
-    spend: live && spendOk ? adBy.reduce((a, { m }) => a + (m.get(`${date}|${h}`)?.spend ?? 0), 0) : null,
+    spend: live && spendOk ? adBy.reduce((a, { m }, i) => a + (m.get(`${date}|${h}`)?.spend ?? 0) * mults[i], 0) : null,
     clicks: live && adsOk ? adBy.reduce((a, { m }) => a + (m.get(`${date}|${h}`)?.clicks ?? 0), 0) : null,
     users: live && x.users ? usersBy.get(`${date}|${h}`)?.value ?? 0 : null,
     orders: live && x.orders ? ordersBy.get(`${date}|${h}`)?.value ?? 0 : null,
@@ -114,7 +120,7 @@ export function buildHourCombo(x: {
   ];
   const rows = defs.filter((d) => has(d.key)).map((d) => ({ ...d, cur: sum(days, d.key, last), prev: sum(prev, d.key, last) }));
   return {
-    currency: spendOk ? currencies[0] : null,
+    currency: spendOk ? plan.currency : null,
     granularity: "hour",
     nowHour: range.today ? range.nowHour : null,
     usersLabel: x.users?.label ?? "실사용자",

@@ -49,6 +49,13 @@ export function EffectPanel({ e, range, data }: { e: EffectReport; range: DateRa
         <p key={n} className="fine">{n}</p>
       ))}
 
+      {e.held && (
+        <div className="alert info" role="note">
+          <strong>판정 보류</strong>
+          <p>{e.held}</p>
+        </div>
+      )}
+
       {head && (
         <div className={`verdict ${head.level}`}>
           <p className="verdict-head">
@@ -64,7 +71,7 @@ export function EffectPanel({ e, range, data }: { e: EffectReport; range: DateRa
         </div>
       )}
 
-      {where.segments.length > 0 && (
+      {!e.held && where.segments.length > 0 && (
         <div className="fx-where">
           <h3>광고비가 간 곳 <span className="fine-inline">캠페인 광고비 {money(where.total)} 기준</span></h3>
           <div className="where-bar" role="img" aria-label={`판정별 광고비: ${where.segments.map((g) => `${g.label} ${Math.round(g.share * 100)}%`).join(", ")}`}>
@@ -85,6 +92,7 @@ export function EffectPanel({ e, range, data }: { e: EffectReport; range: DateRa
         </div>
       )}
 
+      {!e.held && (
       <div className="fx-hi">
         <div className="fx-card good">
           <span className="fx-card-k"><LevelIcon level="good" />가장 효과적</span>
@@ -119,6 +127,8 @@ export function EffectPanel({ e, range, data }: { e: EffectReport; range: DateRa
           <span className="fine">{e.unmeasured ? "클릭은 충분한데 GA4에 캠페인 이름이 안 잡힘 — 광고 링크에 utm_campaign 필요" : "모든 캠페인이 GA4와 연결됨"}</span>
         </div>
       </div>
+
+      )}
 
       {e.channels.length > 0 && (
         <div className="fx-ch">

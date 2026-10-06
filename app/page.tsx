@@ -42,7 +42,9 @@ function MetaPanel({ m, range }: { m: MetaSummary; range: DateRange }) {
       </section>
     );
   }
-  const { cur, prev } = periodSplit(m.days, range.days);
+  const split = periodSplit(m.days, range.days);
+  const cur = split.cur;
+  const prev = range.today ? null : split.prev; // 오늘은 하루가 안 끝나 어제 전체와 견주지 않는다
   const curDays = m.days.slice(-range.days);
   const maxSpend = Math.max(...m.campaigns.map((c) => c.spend), 1);
   const cur$ = (n: number) => fmtValue(n, "won", m.currency);
@@ -234,13 +236,19 @@ function RangePicker({ brand, range }: { brand: BrandId; range: DateRange }) {
   return (
     <div className="range">
       <nav className="presets" aria-label="조회 기간">
+        <a href={`/?brand=${brand}&range=today`} data-keep-hash className={range.today ? "on" : ""}>
+          오늘
+        </a>
+        <a href={`/?brand=${brand}&range=1`} data-keep-hash className={range.preset === 1 ? "on" : ""}>
+          어제
+        </a>
         {PRESETS.map((n) => (
           <a key={n} href={`/?brand=${brand}&range=${n}`} data-keep-hash className={range.preset === n ? "on" : ""}>
             {n}일
           </a>
         ))}
       </nav>
-      <form method="get" action="/" data-keep-hash className={range.preset ? "custom" : "custom on"}>
+      <form method="get" action="/" data-keep-hash className={range.preset || range.today ? "custom" : "custom on"}>
         <input type="hidden" name="brand" value={brand} />
         <input type="date" name="from" defaultValue={range.from} max={yesterdayDate()} aria-label="시작일" required />
         <span>–</span>
@@ -248,8 +256,9 @@ function RangePicker({ brand, range }: { brand: BrandId; range: DateRange }) {
         <button type="submit">적용</button>
       </form>
       <p className="fine">
-        {range.label} · 비교: 직전 {range.days}일 ({fmtDate(range.prev.from)} – {fmtDate(range.prev.to)})
+        {range.label} · 비교: {range.today ? `어제(${fmtDate(range.prev.to)}) 같은 시각까지` : range.days === 1 ? `전날(${fmtDate(range.prev.to)}) 하루` : `직전 ${range.days}일 (${fmtDate(range.prev.from)} – ${fmtDate(range.prev.to)})`}
       </p>
+      {range.today && <p className="fine">오늘은 하루가 끝나지 않아 카드의 '직전 기간 대비'는 숨깁니다. 어제 같은 시각까지의 비교는 한눈에 보기 그래프에서 보세요.</p>}
     </div>
   );
 }

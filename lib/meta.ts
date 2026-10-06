@@ -4,6 +4,7 @@ import { eachDay, type DateRange } from "@/lib/range";
 import { decide, hostsIn, loadRules, subtractDays, type MovedAd, type Rules } from "@/lib/attribution";
 import { metaState, type CampaignState } from "@/lib/campaign-state";
 import type { CampaignSeries } from "@/lib/events";
+import { addHours, metaHourOf, subtractHours, type AdHour } from "@/lib/hourly";
 
 export type MetaDay = { date: string; spend: number; impressions: number; clicks: number };
 export type MetaCampaign = {
@@ -31,7 +32,7 @@ export type MetaAccount = {
   reason?: string;
 };
 export type MetaSummary =
-  | { ok: true; accountName: string; currency: string; days: MetaDay[]; campaigns: MetaCampaign[]; accounts: MetaAccount[]; notes: string[]; moved: MovedAd[]; series: CampaignSeries[] }
+  | { ok: true; accountName: string; currency: string; days: MetaDay[]; campaigns: MetaCampaign[]; accounts: MetaAccount[]; notes: string[]; moved: MovedAd[]; series: CampaignSeries[]; hours: AdHour[] | null }
   | { ok: false; reason: string };
 
 export type MetaTotals = { spend: number; impressions: number; clicks: number; ctr: number; cpc: number; cpm: number };
@@ -176,8 +177,51 @@ async function fetchCampaignDaily(token: string, account: string, ids: string[],
   return out;
 }
 
+// 1일 보기(어제·오늘)용 시간별 지출·클릭(광고 계정의 시간대 기준). 계정 전체, 그리고 캠페인별(다른 브랜드로 옮길 캠페인을 빼려고).
+// 응답 행: date_start + hourly_stats_aggregated_by_advertiser_time_zone("14:00:00 - 14:59:59"). 실패하면 null/빈 값 — 나머지 화면은 그대로.
+const HOUR_FIELD = "hourly_stats_aggregated_by_advertiser_time_zone";
+type HourRowRaw = Row & { [HOUR_FIELD]?: string };
+const toHours = (rows: HourRowRaw[]): AdHour[] =>
+  rows.flatMap((r) => {
+    const hour = metaHourOf(r[HOUR_FIELD]);
+    return hour !== null && r.date_start ? [{ date: r.date_start, hour, spend: Number(r.spend ?? 0), clicks: Number(r.clicks ?? 0), impressions: Number(r.impressions ?? 0) }] : [];
+  });
+
+async function fetchHourlyRows(token: string, url: string): Promise<HourRowRaw[] | null> {
+  const rows: HourRowRaw[] = [];
+  try {
+    let next: string | undefined = url;
+    for (let page = 0; page < 4 && next; page++) {
+      const r: Response = await fetch(next, { headers: { authorization: `Bearer ${token}` }, next: { revalidate: 300 } });
+      if (!r.ok) return page === 0 ? null : rows;
+      const body = (await r.json()) as { data?: HourRowRaw[]; paging?: { next?: string } };
+      rows.push(...(body.data ?? []));
+      next = body.paging?.next && body.paging.next.startsWith(`${API}/`) ? body.paging.next : undefined;
+    }
+  } catch {
+    return null;
+  }
+  return rows;
+}
+
+async function fetchAccountHours(token: string, account: string, range: DateRange): Promise<AdHour[] | null> {
+  const tr = encodeURIComponent(JSON.stringify({ since: range.prev.from, until: range.to }));
+  const rows = await fetchHourlyRows(token, `${API}/${account}/insights?fields=spend,impressions,clicks&breakdowns=${HOUR_FIELD}&time_increment=1&limit=500&time_range=${tr}`);
+  return rows ? toHours(rows) : null;
+}
+
+async function fetchCampaignHours(token: string, account: string, ids: string[], range: DateRange): Promise<Map<string, AdHour[]>> {
+  const out = new Map<string, AdHour[]>();
+  if (!ids.length) return out;
+  const tr = encodeURIComponent(JSON.stringify({ since: range.prev.from, until: range.to }));
+  const filtering = encodeURIComponent(JSON.stringify([{ field: "campaign.id", operator: "IN", value: ids }]));
+  const rows = await fetchHourlyRows(token, `${API}/${account}/insights?fields=campaign_id,spend,impressions,clicks&level=campaign&breakdowns=${HOUR_FIELD}&time_increment=1&limit=500&filtering=${filtering}&time_range=${tr}`);
+  for (const id of ids) out.set(id, toHours((rows ?? []).filter((r) => r.campaign_id === id)));
+  return out;
+}
+
 // 이 계정 캠페인 중 다른 브랜드 광고로 보이는 것과 그 일별 값(daily 는 위에서 읽은 캠페인별 일별).
-async function findMoved(token: string, id: string, res: AcctOk, brand: BrandId, range: DateRange, rules: Rules, daily: Map<string, MetaDay[]>): Promise<MovedAd[]> {
+async function findMoved(token: string, id: string, res: AcctOk, brand: BrandId, range: DateRange, rules: Rules, daily: Map<string, MetaDay[]>, hourly: Map<string, AdHour[]>): Promise<MovedAd[]> {
   const links = rules.links.length ? await fetchLinkHosts(token, id) : new Map<string, string[]>();
   const picks = res.campaigns
     .map((r) => ({ r, d: r.campaign_id ? decide(rules, brand, r.campaign_name ?? "", links.get(r.campaign_id) ?? []) : null }))
@@ -196,6 +240,7 @@ async function findMoved(token: string, id: string, res: AcctOk, brand: BrandId,
     state: r.state,
     why: d.why,
     days: daily.get(r.campaign_id as string) ?? fillDays([], range),
+    ...(range.days === 1 ? { hours: hourly.get(r.campaign_id as string) ?? [] } : {}),
   }));
 }
 
@@ -290,7 +335,11 @@ export async function metaSummary(brand: BrandId, range: DateRange): Promise<Met
   // 다른 브랜드 광고로 보이는 캠페인(예: Houscaper 계정에서 결제한 Topogenesis 부스트)은 이 브랜드 합계에서 빼고 따로 들고 간다.
   const rules = loadRules();
   const dailyBy = await Promise.all(included.map(({ id, res }) => fetchCampaignDaily(token, id, res.campaigns.map((c) => c.campaign_id).filter((x): x is string => !!x), range)));
-  const movedBy = await Promise.all(included.map(({ id, res }, i) => findMoved(token, id, res, brand, range, rules, dailyBy[i])));
+  // 1일 보기: 캠페인별 시간별(옮길 캠페인을 시간별에서도 빼려고) + 계정 전체 시간별.
+  const oneDay = range.days === 1;
+  const campHoursBy = await Promise.all(included.map(({ id, res }) => (oneDay ? fetchCampaignHours(token, id, res.campaigns.map((c) => c.campaign_id).filter((x): x is string => !!x), range) : Promise.resolve(new Map<string, AdHour[]>()))));
+  const acctHoursBy = await Promise.all(included.map(({ id }) => (oneDay ? fetchAccountHours(token, id, range) : Promise.resolve(null))));
+  const movedBy = await Promise.all(included.map(({ id, res }, i) => findMoved(token, id, res, brand, range, rules, dailyBy[i], campHoursBy[i])));
   const moved = movedBy.flat();
   if (moved.length) {
     const byTo = new Map<string, number>();
@@ -300,6 +349,11 @@ export async function metaSummary(brand: BrandId, range: DateRange): Promise<Met
   included.forEach((inc, i) => {
     if (movedBy[i].length) inc.res = { ...inc.res, days: subtractDays(inc.res.days, movedBy[i].map((m) => m.days)), campaigns: inc.res.campaigns.filter((c) => !movedBy[i].some((m) => m.name === (c.campaign_name ?? "(이름 없음)"))) };
   });
+
+  // 1일 보기 시간별: 읽은 계정끼리 더하고, 다른 브랜드로 옮긴 캠페인은 뺀다. 한 계정이라도 못 읽었으면 시간별 전체를 쓰지 않는다(일 합계만).
+  const hours: AdHour[] | null = oneDay && acctHoursBy.length && acctHoursBy.every((h) => h !== null)
+    ? addHours([], acctHoursBy.map((h, i) => subtractHours(h as AdHour[], movedBy[i].map((m) => m.hours ?? []))))
+    : null;
 
   // 그래프의 '켜고 끈 날짜' 추정에 쓰는 캠페인별 일별 지출(옮겨 간 캠페인은 받는 브랜드가 가져간다).
   const series: CampaignSeries[] = included.flatMap(({ res }, i) =>
@@ -341,5 +395,5 @@ export async function metaSummary(brand: BrandId, range: DateRange): Promise<Met
   if (!anySpend && !campaigns.length && !extra.length && !business) {
     notes.push(`이 기간 Ads Manager 계정(${main})에 광고가 없습니다. 인스타그램 프로모션(부스트)은 다른 광고 계정에 있을 수 있어요 — ${prefix}_META_BUSINESS_ID(자동 탐색) 또는 ${prefix}_META_EXTRA_AD_ACCOUNT_IDS(직접 지정)를 설정하세요.`);
   }
-  return { ok: true, accountName: included.map((i) => i.res.name || i.id).join(" · "), currency: baseCurrency, days, campaigns, accounts, notes, moved, series };
+  return { ok: true, accountName: included.map((i) => i.res.name || i.id).join(" · "), currency: baseCurrency, days, campaigns, accounts, notes, moved, series, hours };
 }

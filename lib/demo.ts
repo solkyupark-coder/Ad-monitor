@@ -16,6 +16,12 @@ const scaleCampaign = <T extends { spend: number; impressions: number; clicks: n
 // 직전 기간 + 조회 기간 날짜(비교용 일별 행).
 const demoDays = (r: DateRange) => eachDay(r.prev.from, r.to);
 
+// 데모: 1일 보기용 시간별 뼈대(전날 24시간 + 그날, 오늘이면 지금 시각까지).
+export function demoHours(r: DateRange): { date: string; hour: number }[] {
+  const last = r.today && r.nowHour !== null ? r.nowHour : 23;
+  return [...Array.from({ length: 24 }, (_, h) => ({ date: r.prev.to, hour: h })), ...Array.from({ length: last + 1 }, (_, h) => ({ date: r.to, hour: h }))];
+}
+
 // 데모: 캠페인별 일별 지출. 중지된 캠페인은 기간 중간에 지출이 끊기고, 새 캠페인은 중간에 시작한다(그래프의 세로선 확인용).
 function demoSeries(r: DateRange, days: { date: string; spend: number }[]): CampaignSeries[] {
   const dates = days.map((d) => d.date);
@@ -58,6 +64,7 @@ export function demoMeta(r: DateRange): MetaSummary {
     notes: [],
     moved: [],
     series: demoSeries(r, days),
+    hours: r.days === 1 ? demoHours(r).map((h) => ({ ...h, spend: Math.round(900 + 500 * Math.sin(h.hour / 3.5)), clicks: Math.round(6 + 4 * Math.sin(h.hour / 3.5)), impressions: 400 })) : null,
   };
 }
 
@@ -128,6 +135,7 @@ export function demoGa4(r: DateRange): Ga4Summary {
     geoPrev: scale(geo, k * 0.85),
     geoTruncated: false,
     daily: demoDays(r).map((date, i) => ({ date, users: Math.round(60 + 18 * Math.sin(i / 1.9) + (i >= r.days ? 10 : 0)) })),
+    hourly: r.days === 1 ? demoHours(r).map((h) => ({ ...h, value: Math.round(5 + 4 * Math.sin(h.hour / 3)) })) : null,
     blocked: { sessions: Math.round(310 * k), users: Math.round(240 * k) },
     campaigns: campaigns.map((c) => ({ ...c, sessions: Math.round(c.sessions * k), engagedSessions: Math.round(c.engagedSessions * k), engagementSec: c.engagementSec * k })),
   });
@@ -136,6 +144,10 @@ export function demoGa4(r: DateRange): Ga4Summary {
 // 데모: 일부 날에만 결제가 있다.
 export function demoRevenueDays(r: DateRange): { date: string; orders: number }[] {
   return demoDays(r).flatMap((date, i) => (i % 9 === 4 ? [{ date, orders: 1 + (i % 2) }] : []));
+}
+
+export function demoRevenueHours(r: DateRange): { date: string; hour: number; value: number }[] | null {
+  return r.days === 1 ? demoHours(r).filter((h) => h.hour % 7 === 3).map((h) => ({ ...h, value: 1 })) : null;
 }
 
 export function demoRevenue(_r: DateRange): RevenueSummary {
@@ -154,6 +166,7 @@ export function demoAds(r: DateRange): GoogleAdsSummary {
     notes: [],
     moved: [],
     series: [],
+    hours: r.days === 1 ? demoHours(r).map((h) => ({ ...h, spend: Math.round(1500 + 800 * Math.cos(h.hour / 4)), clicks: Math.round(3 + 2 * Math.cos(h.hour / 4)), impressions: 200 })) : null,
     days,
     campaigns: [
       { name: "[데모] 검색 · 브랜드", cost: 38000, clicks: 96, impressions: 2100, state: "active" as const },
@@ -186,6 +199,7 @@ export function demoVercel(r: DateRange): VercelSummary {
       referrers: [t("", 150), t("instagram.com", 60), t("google.com", 44), t("facebook.com", 21)],
       countries: [t("KR", 170), t("US", 70), t("JP", 18)],
       blocked: { visitors: Math.round((96 * r.days) / 7), pageviews: Math.round((230 * r.days) / 7), hosts: ["cashlee.co", "ad2click.co"], dailyApplied: true },
+      hourly: r.days === 1 ? demoHours(r).map((h) => ({ ...h, visitors: Math.round(8 + 6 * Math.sin(h.hour / 3.2)), pageviews: Math.round((8 + 6 * Math.sin(h.hour / 3.2)) * 2.4) })) : null,
     },
   };
 }

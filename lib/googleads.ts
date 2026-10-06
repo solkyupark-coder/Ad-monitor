@@ -7,18 +7,19 @@ import { eachDay, type DateRange } from "@/lib/range";
 import { decide, hostsIn, loadRules, subtractDays, type DayRow, type MovedAd } from "@/lib/attribution";
 import { googleState, type CampaignState } from "@/lib/campaign-state";
 import type { CampaignSeries } from "@/lib/events";
+import { subtractHours, type AdHour } from "@/lib/hourly";
 
 export type AdsDay = { date: string; clicks: number; cost: number; impressions: number };
 export type AdsCampaign = { name: string; clicks: number; cost: number; impressions: number; paidBy?: string; state?: CampaignState }; // state: 집행 중 / 중지됨 / 삭제됨(campaign.status 기준) // paidBy: 다른 브랜드 계정에서 결제돼 옮겨 온 캠페인 표시
 export type GoogleAdsSummary =
-  | { ok: true; accountName: string; currency: string; days: AdsDay[]; campaigns: AdsCampaign[]; notes: string[]; moved: MovedAd[]; series: CampaignSeries[] }
+  | { ok: true; accountName: string; currency: string; days: AdsDay[]; campaigns: AdsCampaign[]; notes: string[]; moved: MovedAd[]; series: CampaignSeries[]; hours: AdHour[] | null }
   | { ok: false; reason: string };
 
 type AdsRow = {
   customer?: { descriptiveName?: string; currencyCode?: string };
   campaign?: { id?: string; name?: string; status?: string };
   adGroupAd?: { ad?: { finalUrls?: string[] } };
-  segments?: { date?: string };
+  segments?: { date?: string; hour?: number | string };
   metrics?: { clicks?: string; costMicros?: string; impressions?: string };
 };
 type AdsResp = {
@@ -182,8 +183,36 @@ export async function googleAdsSummary(brand: BrandId, range: DateRange): Promis
       days = subtractDays(days.map((d) => ({ date: d.date, spend: d.cost, impressions: d.impressions, clicks: d.clicks })), hasDaily.map((m) => m.days)).map((d) => ({ date: d.date, cost: d.spend, impressions: d.impressions, clicks: d.clicks }));
       notes.push(`다른 브랜드 광고로 보이는 캠페인 ${moved.length}개(${moved.map((m) => `${m.name} → ${m.to}`).join(", ")})를 이 브랜드 합계에서 빼 그 브랜드 화면으로 옮겼습니다.`);
     }
+    // 1일 보기(어제·오늘): 시간별(광고 계정 시간대 기준). 계정 전체에서 다른 브랜드로 옮긴 캠페인을 빼서 읽는다. 못 읽으면 null(일 합계만).
+    let hours: AdHour[] | null = null;
+    if (range.days === 1) {
+      const win = `segments.date BETWEEN '${range.prev.from}' AND '${range.to}'`;
+      const hourRows = async (from: "customer" | "campaign", where: string): Promise<(AdHour & { id: string })[] | null> => {
+        try {
+          const r = await search(`SELECT segments.date, segments.hour, ${from === "campaign" ? "campaign.id, " : ""}metrics.clicks, metrics.cost_micros, metrics.impressions FROM ${from} WHERE ${where}${win}`);
+          if (!r.ok) return null;
+          return (((await r.json()) as AdsResp).results ?? []).flatMap((row) => {
+            const hour = Number(row.segments?.hour);
+            if (!row.segments?.date || !Number.isInteger(hour)) return [];
+            const m = metric(row);
+            return [{ id: digits(row.campaign?.id), date: row.segments.date, hour, spend: m.cost, clicks: m.clicks, impressions: m.impressions }];
+          });
+        } catch {
+          return null;
+        }
+      };
+      const acct = await hourRows("customer", "");
+      if (acct) {
+        const movedIds = picks.map((x) => x.c.id).filter((x): x is string => !!x);
+        const camp = movedIds.length ? await hourRows("campaign", `campaign.id IN (${movedIds.join(",")}) AND `) : [];
+        picks.forEach((pk, i) => {
+          moved[i].hours = (camp ?? []).filter((r) => r.id === pk.c.id).map(({ id: _id, ...h }) => h);
+        });
+        hours = subtractHours(acct.map(({ id: _id, ...h }) => h), moved.map((m) => m.hours ?? []));
+      }
+    }
     const series: CampaignSeries[] = campaigns.map((c) => ({ name: c.name, state: c.state, days: ((c.id && dailyById.get(c.id)) || []).map((d) => ({ date: d.date, spend: d.spend })) }));
-    return { ok: true, accountName: info?.descriptiveName ?? "", currency, days, campaigns: campaigns.map(({ id: _id, ...c }) => c), notes, moved, series };
+    return { ok: true, accountName: info?.descriptiveName ?? "", currency, days, campaigns: campaigns.map(({ id: _id, ...c }) => c), notes, moved, series, hours };
   } catch (e) {
     logFailure("google-ads", brand, `network ${e instanceof Error ? e.message : String(e)}`);
     return { ok: false, reason: "조회 실패(네트워크)" };

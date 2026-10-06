@@ -42,6 +42,7 @@ export type EffectReport = {
   baseline: number | null; // 기준: 연결된 행 전체의 참여 1회당 비용
   gaMissing: boolean; // GA4 캠페인 리포트를 못 읽음
   mixedCurrency: boolean; // 채널 통화가 달라 채널끼리 비용을 견주지 않음
+  held: string | null; // 1일 보기 등: 표본이 작아 모든 판정을 보류한 이유(없으면 null)
   notes: string[];
 };
 
@@ -108,7 +109,7 @@ export function judge(j: Judge): { verdict: Verdict; why: string } {
 type ChannelTotals = { spend: number; clicks: number; impressions: number };
 type ChannelIn = { currency: string; campaigns: AdCampaignIn[]; total?: ChannelTotals } | null;
 
-export function buildEffect(input: { meta: ChannelIn; ads: ChannelIn; gaCampaigns: GaCampaignRow[] | null; gaTruncated?: boolean }): EffectReport {
+export function buildEffect(input: { meta: ChannelIn; ads: ChannelIn; gaCampaigns: GaCampaignRow[] | null; gaTruncated?: boolean; hold?: string | null }): EffectReport {
   const gaMissing = input.gaCampaigns === null;
   const gaCampaigns = input.gaCampaigns ?? [];
   const notes: string[] = [];
@@ -193,9 +194,15 @@ export function buildEffect(input: { meta: ChannelIn; ads: ChannelIn; gaCampaign
   });
 
   const live = (c: EffectRow) => !isStopped(c.state);
-  const goods = mixedCurrency ? [] : campaigns.filter((c) => live(c) && c.verdict === "good" && c.costPerEngaged !== null).sort((a, b) => (a.costPerEngaged ?? 0) - (b.costPerEngaged ?? 0));
-  const bads = mixedCurrency ? [] : campaigns.filter((c) => live(c) && c.verdict === "bad").sort((a, b) => b.spend - a.spend);
-  const stoppedBad = campaigns.filter((c) => !live(c) && c.verdict === "bad").sort((a, b) => b.spend - a.spend);
+  // 1일 보기처럼 표본이 작은 기간은 모든 판정을 보류하고 숫자만 보여 준다(낭비 의심 같은 단정·요약 카드를 만들지 않는다).
+  const held = input.hold ?? null;
+  if (held) {
+    for (const rows of [campaigns, channels]) for (const r of rows) { r.verdict = "hold"; r.why = held; }
+    notes.unshift(held);
+  }
+  const goods = mixedCurrency || held ? [] : campaigns.filter((c) => live(c) && c.verdict === "good" && c.costPerEngaged !== null).sort((a, b) => (a.costPerEngaged ?? 0) - (b.costPerEngaged ?? 0));
+  const bads = mixedCurrency || held ? [] : campaigns.filter((c) => live(c) && c.verdict === "bad").sort((a, b) => b.spend - a.spend);
+  const stoppedBad = held ? [] : campaigns.filter((c) => !live(c) && c.verdict === "bad").sort((a, b) => b.spend - a.spend);
   if (!gaMissing && campaigns.length && campaigns.every((c) => c.verdict === "hold")) notes.push("모든 캠페인이 보류입니다 — 표본이 적거나 광고 링크에 캠페인 이름(utm_campaign)이 없습니다.");
   return {
     currency: currencies[0] ?? "KRW",
@@ -204,7 +211,8 @@ export function buildEffect(input: { meta: ChannelIn; ads: ChannelIn; gaCampaign
     best: goods[0] ?? null,
     worst: bads[0] ?? null,
     stoppedBad,
-    unmeasured: gaMissing ? 0 : campaigns.filter((c) => live(c) && !c.residual && c.verdict === "hold" && c.sessions === 0 && c.clicks >= MIN_CLICKS).length,
+    held,
+    unmeasured: gaMissing || held ? 0 : campaigns.filter((c) => live(c) && !c.residual && c.verdict === "hold" && c.sessions === 0 && c.clicks >= MIN_CLICKS).length,
     baseline: mixedCurrency ? null : pool(currencies[0] ?? "KRW", () => true),
     gaMissing,
     mixedCurrency,
@@ -240,7 +248,7 @@ const liveOnly = (e: EffectReport): EffectReport => ({ ...e, campaigns: e.campai
 export function effectHeadline(full: EffectReport): EffectHeadline | null {
   const e = liveOnly(full);
   const live = full.campaigns.some((c) => c.state === "active" || isStopped(c.state)) ? "집행 중인 " : ""; // 상태를 아는 경우에만 '집행 중' 이라고 말한다
-  if (e.gaMissing || e.mixedCurrency || !e.campaigns.length) return null;
+  if (e.held || e.gaMissing || e.mixedCurrency || !e.campaigns.length) return null;
   const { total, segments } = spendByClass(e);
   if (total <= 0) return null;
   const share = (k: SpendClass) => segments.find((s) => s.key === k)?.share ?? 0;

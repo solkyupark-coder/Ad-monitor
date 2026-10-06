@@ -6,12 +6,12 @@ import { ga4Summary, type Ga4Summary } from "@/lib/ga4";
 import { googleAdsSummary, type GoogleAdsSummary } from "@/lib/googleads";
 import { revenueDays, revenueSummary, type RevenueSummary } from "@/lib/revenue";
 import { vercelSummary, type VercelSummary } from "@/lib/vercel";
-import { demoAds, demoGa4, demoMeta, demoOn, demoRevenue, demoRevenueDays, demoVercel, demoYoutube } from "@/lib/demo";
+import { demoAds, demoGa4, demoMeta, demoOn, demoRevenue, demoRevenueDays, demoRevenueHours, demoVercel, demoYoutube } from "@/lib/demo";
 import { buildOverview, type Overview } from "@/lib/overview";
 import { buildEffect, type EffectReport } from "@/lib/effect";
 import { buildActions, type ActionItem } from "@/lib/actions";
 import { mergeAdsMoved, mergeMetaMoved } from "@/lib/merge";
-import { buildCombo, type ComboData } from "@/lib/combo";
+import { buildCombo, buildHourCombo, type ComboData } from "@/lib/combo";
 import { allEvents } from "@/lib/events";
 import type { DateRange } from "@/lib/range";
 
@@ -71,24 +71,44 @@ export async function loadDashboard(brand: BrandId, range: DateRange, skip: { yo
     botUsers: ga && ga.ok ? ga.split.suspectUsers : null,
     orders: rev && rev.ok ? rev.orders : null,
     days: range.days,
+    today: range.today,
   });
   const effect = buildEffect({
     meta: meta && meta.ok ? { currency: meta.currency, campaigns: meta.campaigns.map((c) => ({ name: c.name, spend: c.spend, impressions: c.impressions, clicks: c.clicks, state: c.state, paidBy: c.paidBy })), total: sumTotals(meta.days.slice(-range.days), (d) => d.spend) } : null,
     ads: ads && ads.ok ? { currency: ads.currency, campaigns: ads.campaigns.map((c) => ({ name: c.name, spend: c.cost, impressions: c.impressions, clicks: c.clicks, state: c.state, paidBy: c.paidBy })), total: sumTotals(ads.days.slice(-range.days), (d) => d.cost) } : null,
     gaCampaigns: ga && ga.ok ? ga.campaigns : null,
     gaTruncated: ga && ga.ok ? ga.campaignsTruncated : false,
+    hold: range.days <= 1 ? `${range.today ? "오늘은 하루가 끝나지 않았고" : "하루는"} 표본이 작아 효과 판정(낭비 의심·점검·효과 있음)을 보류합니다 — 숫자만 보고, 판단은 7일 이상으로 보세요.` : null,
   });
   // 겹쳐 그리는 일별 그래프: 광고비(막대) + 실사용자·클릭(선) + 결제(마커), 직전 기간 겹침, 광고 켜고 끈 날짜.
+  const oneDay = range.days === 1;
+  const daySum = <T,>(rows: T[], f: (r: T) => number) => rows.slice(-1).reduce((a, r) => a + f(r), 0); // 1일 보기의 하루 합계(마지막 날)
   const combo = skip.combo
     ? null
-    : buildCombo({
-        range,
-        meta: meta && meta.ok ? { currency: meta.currency, days: meta.days.map((d) => ({ date: d.date, spend: d.spend, clicks: d.clicks })) } : null,
-        ads: ads && ads.ok ? { currency: ads.currency, days: ads.days.map((d) => ({ date: d.date, spend: d.cost, clicks: d.clicks })) } : null,
-        users: ga && ga.ok ? ga.daily : null,
-        orders: Array.isArray(revDays) ? revDays : revDays && revDays.ok ? revDays.days : null,
-        events: allEvents(brand, [...(meta && meta.ok ? meta.series : []), ...(ads && ads.ok ? ads.series : [])], range),
-      });
+    : oneDay
+      ? buildHourCombo({
+          range,
+          meta: meta && meta.ok ? { currency: meta.currency, hours: meta.hours, dayTotal: { spend: daySum(meta.days, (d) => d.spend), clicks: daySum(meta.days, (d) => d.clicks) } } : null,
+          ads: ads && ads.ok ? { currency: ads.currency, hours: ads.hours, dayTotal: { spend: daySum(ads.days, (d) => d.cost), clicks: daySum(ads.days, (d) => d.clicks) } } : null,
+          // 사용자 선: GA4 시간별 실사용자, 못 읽으면 Vercel 방문자 시간별로 대체
+          users:
+            ga && ga.ok && ga.hourly
+              ? { rows: ga.hourly, label: "실사용자(GA4)" }
+              : vc && vc.ok && vc.analytics.ok && vc.analytics.hourly
+                ? { rows: vc.analytics.hourly.map((h) => ({ date: h.date, hour: h.hour, value: h.visitors })), label: "방문자(Vercel)" }
+                : null,
+          usersDayTotal: ga && ga.ok ? Math.round(ga.real.activeUsers) : null,
+          orders: demo ? demoRevenueHours(range) : revDays && !Array.isArray(revDays) && revDays.ok ? revDays.hours : null,
+          ordersDayTotal: rev && rev.ok ? rev.orders : null,
+        })
+      : buildCombo({
+          range,
+          meta: meta && meta.ok ? { currency: meta.currency, days: meta.days.map((d) => ({ date: d.date, spend: d.spend, clicks: d.clicks })) } : null,
+          ads: ads && ads.ok ? { currency: ads.currency, days: ads.days.map((d) => ({ date: d.date, spend: d.cost, clicks: d.clicks })) } : null,
+          users: ga && ga.ok ? ga.daily : null,
+          orders: Array.isArray(revDays) ? revDays : revDays && revDays.ok ? revDays.days : null,
+          events: allEvents(brand, [...(meta && meta.ok ? meta.series : []), ...(ads && ads.ok ? ads.series : [])], range),
+        });
   const pending = statuses.filter((s) => !isOn(s.platform.id));
   // 이 브랜드 자체 계정 조회가 실패했으면, 합친 결과가 정상이어도 실패 알림은 그대로 남긴다.
   const actions = buildActions({ days: range.days, meta: metaRaw && !metaRaw.ok ? metaRaw : meta, ads: adsRaw && !adsRaw.ok ? adsRaw : ads, ga, rev, vercel: vc, youtube: yt, pending: pending.map((p) => p.platform.label), verdict: overview.verdict, effect });

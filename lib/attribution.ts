@@ -8,6 +8,7 @@
 //   AD_REASSIGN_DEFAULTS=off                                          기본 규칙(topo, topogenesis.xyz)을 끈다
 import type { BrandId } from "@/lib/platforms";
 import type { CampaignState } from "@/lib/campaign-state";
+import type { AdHour } from "@/lib/hourly";
 
 export type DayRow = { date: string; spend: number; impressions: number; clicks: number };
 export type NameRule = { pattern: string; to: BrandId };
@@ -29,6 +30,7 @@ export type MovedAd = {
   state?: CampaignState; // 집행 중 / 중지됨 / 삭제됨(API 상태 기준)
   why: string; // 옮긴 이유(이름 규칙 / 링크 규칙)
   days: DayRow[]; // [직전 기간 시작 … 기간 끝] 일별
+  hours?: AdHour[]; // 1일 보기에서만: 시간별(전날부터)
 };
 
 const BRAND_IDS: BrandId[] = ["houscaper", "topogenesis"];

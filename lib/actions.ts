@@ -82,7 +82,7 @@ export function buildActions(x: {
     if (a.ok) {
       const cur = sum(a.days.slice(-x.days), (d) => d.visitors);
       const prev = sum(a.days.slice(0, -x.days), (d) => d.visitors);
-      if (prev > 20 && cur / prev - 1 <= -CHANGE) out.push({ level: "warn", area: "Vercel", title: `사이트 방문자 ${pctTxt(cur / prev - 1)} (직전 기간 대비)`, action: "광고가 꺼졌는지, 배포 뒤 페이지가 깨졌는지부터 확인한다." });
+      if (x.days > 1 && prev > 20 && cur / prev - 1 <= -CHANGE) out.push({ level: "warn", area: "Vercel", title: `사이트 방문자 ${pctTxt(cur / prev - 1)} (직전 기간 대비)`, action: "광고가 꺼졌는지, 배포 뒤 페이지가 깨졌는지부터 확인한다." });
     }
   }
 
@@ -98,11 +98,12 @@ export function buildActions(x: {
   }
 
   // 광고 효율
-  if (x.meta?.ok) {
+  // 1일 보기는 표본이 작아 직전 기간 대비 경고를 만들지 않는다(클릭 몇 번으로 비용이 크게 출렁인다).
+  if (x.meta?.ok && x.days > 1) {
     const c = cpcCheck("메타", x.meta.days, x.days, (d) => d.spend, channelStopped("meta"));
     if (c) out.push(c);
   }
-  if (x.ads?.ok) {
+  if (x.ads?.ok && x.days > 1) {
     const c = cpcCheck("구글 광고", x.ads.days, x.days, (d) => d.cost, channelStopped("google"));
     if (c) out.push(c);
   }

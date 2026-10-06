@@ -30,6 +30,7 @@ export function buildOverview(input: {
   botUsers?: number | null; // GA4 봇 의심으로 뺀 사용자
   orders: number | null; // 조회 기간 실제 결제 건수
   days: number; // 조회 기간 일수(광고 일별 행의 마지막 N일을 쓴다)
+  today?: boolean; // 오늘 보기(하루가 안 끝남): 어제 전체와 견주지 않는다
 }): Overview {
   const lastN = <T,>(days: T[]) => days.slice(-input.days);
   const sources = [
@@ -48,7 +49,7 @@ export function buildOverview(input: {
   // 직전 같은 길이 기간(모든 광고 채널에 일별 행이 그만큼 있을 때만).
   const prevOf = (days: SpendDay[]) => days.slice(-2 * input.days, -input.days);
   const spendPrev =
-    spend !== null && sources.every((s) => prevOf(s.all).length === input.days) ? sum(sources, (s) => sum(prevOf(s.all), s.spend)) : null;
+    !input.today && spend !== null && sources.every((s) => prevOf(s.all).length === input.days) ? sum(sources, (s) => sum(prevOf(s.all), s.spend)) : null;
   const impressions = sources.length ? sum(sources, (s) => sum(s.days, (d) => d.impressions)) : null;
   const clicks = sources.length ? sum(sources, (s) => sum(s.days, (d) => d.clicks)) : null;
   const raw: Omit<FunnelStep, "rateFromPrev" | "meaning">[] = [
@@ -57,10 +58,12 @@ export function buildOverview(input: {
     { key: "users", label: "사이트 실사용자", note: "GA4 · 봇 의심 제외 · 광고 외 유입 포함", value: input.realUsers },
     { key: "orders", label: "실제 결제", note: "Polar / Supabase 결제 완료", value: input.orders },
   ];
+  // 1일 보기는 표본이 작아 '낭비·봇·결제 0건' 같은 단정을 하지 않는다: 단계 해석은 참고(info)로 낮춘다.
+  const tone = (m: Meaning | null): Meaning | null => (m && input.days <= 1 && (m.level === "bad" || m.level === "warn") ? { ...m, level: "info", text: `표본이 작아 참고만: ${m.text}` } : m);
   const steps = raw.map((s, i) => {
     const prev = raw[i - 1]?.value;
     const rateFromPrev = i > 0 && prev && s.value !== null ? s.value / prev : null;
-    return { ...s, rateFromPrev, meaning: meaningFor(s.key, rateFromPrev, s.value, prev ?? null) };
+    return { ...s, rateFromPrev, meaning: tone(meaningFor(s.key, rateFromPrev, s.value, prev ?? null)) };
   });
   const byDate = new Map<string, DailyPoint>();
   sources.forEach((src) =>
@@ -77,7 +80,15 @@ export function buildOverview(input: {
     spendPrev,
     channels: sources.map((s) => ({ name: s.name, spend: sum(s.days, s.spend) })),
     daily: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
-    verdict: verdictFor({ impressions, clicks, users: input.realUsers, orders: input.orders, bots: input.botUsers ?? null, spend, currency: currencies[0] ?? "KRW" }),
+    verdict:
+      input.days <= 1
+        ? {
+            level: "info",
+            headline: input.today ? "오늘은 아직 하루가 끝나지 않았다 — 판정 보류" : "하루치 데이터 — 판정 보류",
+            detail: "하루는 표본이 작아 '봇 의심·낭비 의심·결제 없음' 같은 결론을 내리지 않습니다. 아래 시간별 그래프는 어떤 시간대에 광고비·클릭·사용자가 움직였는지 보는 용도입니다.",
+            action: "추세 판단은 7일 이상으로 보고, 오늘은 새로 켠 캠페인이 제대로 돌기 시작했는지(노출·클릭이 붙는지)만 확인한다.",
+          }
+        : verdictFor({ impressions, clicks, users: input.realUsers, orders: input.orders, bots: input.botUsers ?? null, spend, currency: currencies[0] ?? "KRW" }),
     spend,
     currency: currencies[0] ?? "KRW",
     spendNote,

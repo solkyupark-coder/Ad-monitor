@@ -4,6 +4,7 @@ import { BRANDS, type BrandId } from "@/lib/platforms";
 import type { DateRange } from "@/lib/range";
 import type { GaCampaignRow } from "@/lib/effect";
 import { blocklistFor, ga4BlockedExpression, isBlockedSource } from "@/lib/blocklist";
+import { gaDateHour, type CountHour } from "@/lib/hourly";
 import { DATACENTER_CITIES, excludeSuspect, splitTraffic, flagSources, type FlaggedGeo, type FlaggedSource, type GeoRow, type SourceRow, type Totals, type TrafficSplit } from "@/lib/traffic";
 
 export type Ga4Totals = {
@@ -32,6 +33,7 @@ export type Ga4Summary =
       geoTruncated: boolean;
       campaigns: GaCampaignRow[] | null; // 캠페인×소스/매체 유입(데이터센터 도시 제외). 못 읽으면 null
       campaignsTruncated: boolean; // 행이 많아 일부만 읽음
+      hourly: CountHour[] | null; // 1일 보기(어제·오늘)에서만: 시간별 실사용자(전날부터). 못 읽거나 1일 보기가 아니면 null
       daily: { date: string; users: number }[] | null; // 일별 실사용자(직전 기간부터): 데이터센터 도시·PTC 유입 제외. 못 읽으면 null
       blocked: { sessions: number; users: number } | null; // 리워드·클릭팜(PTC) 유입으로 보고 위 모든 수치에서 뺀 양. 못 읽으면 null
     }
@@ -78,6 +80,7 @@ export function assembleGa4(input: {
   campaignsTruncated?: boolean;
   blocked?: { sessions: number; users: number } | null;
   daily?: { date: string; users: number }[] | null;
+  hourly?: CountHour[] | null;
 }): Ga4Summary {
   const sCur = splitTraffic(input.geoCur, input.total.activeUsers, input.total.sessions);
   const sPrev = splitTraffic(input.geoPrev, input.totalPrev.activeUsers, input.totalPrev.sessions);
@@ -97,6 +100,7 @@ export function assembleGa4(input: {
     campaignsTruncated: input.campaignsTruncated ?? false,
     blocked: input.blocked ?? null,
     daily: input.daily ?? null,
+    hourly: input.hourly ?? null,
   };
 }
 
@@ -158,7 +162,18 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
       orderBys: [{ dimension: { dimensionName: "date" } }],
       limit: 400,
     });
-    const [ov, src, geo, geoPrev, camp, ptc, dayRes] = await Promise.all([
+    // 1일 보기(어제·오늘)면 시간별 실사용자도 읽는다(전날부터 두 날).
+    const hourlyReport = range.days === 1
+      ? run({
+          dateRanges: [{ startDate: range.prev.from, endDate: range.to }],
+          dimensions: [{ name: "dateHour" }],
+          metrics: [{ name: "activeUsers" }],
+          dimensionFilter: { andGroup: { expressions: [{ notExpression: { filter: { fieldName: "city", inListFilter: { values: DATACENTER_CITIES } } } }, notPtc] } },
+          orderBys: [{ dimension: { dimensionName: "dateHour" } }],
+          limit: 100,
+        })
+      : null;
+    const [ov, src, geo, geoPrev, camp, ptc, dayRes, hourRes] = await Promise.all([
       run({
         dateRanges: [rCur, rPrev],
         dimensionFilter: notPtc,
@@ -177,6 +192,7 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
       campaignReport,
       ptcReport,
       dailyReport,
+      hourlyReport,
     ]);
     const bad = [ov, src, geo, geoPrev].find((r) => !r.ok);
     if (bad) {
@@ -255,6 +271,17 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
     } else {
       logFailure("ga4", brand, `daily report ${dayRes.status}`); // 그래프의 실사용자 선만 빠진다
     }
+    let hourly: CountHour[] | null = null;
+    if (hourRes) {
+      if (hourRes.ok) {
+        hourly = (((await hourRes.json()) as GaResp).rows ?? []).flatMap((r) => {
+          const dh = gaDateHour(r.dimensionValues?.[0]?.value);
+          return dh ? [{ ...dh, value: num(r, 0) }] : [];
+        });
+      } else {
+        logFailure("ga4", brand, `hourly report ${hourRes.status}`); // 시간별 선만 빠지고 하루 합계는 그대로
+      }
+    }
     return assembleGa4({
       currency: ovJson.metadata?.currencyCode ?? "",
       total,
@@ -267,6 +294,7 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
       campaignsTruncated,
       blocked,
       daily,
+      hourly,
     });
   } catch (e) {
     logFailure("ga4", brand, `network ${e instanceof Error ? e.message : String(e)}`);

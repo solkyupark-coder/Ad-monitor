@@ -5,12 +5,21 @@ import { addDays, type DayRow, type MovedAd } from "@/lib/attribution";
 import type { MetaCampaign, MetaDay, MetaSummary } from "@/lib/meta";
 import type { AdsCampaign, AdsDay, GoogleAdsSummary } from "@/lib/googleads";
 import type { CampaignSeries } from "@/lib/events";
+import { addHours, type AdHour } from "@/lib/hourly";
 
 const NAME: Record<BrandId, string> = { houscaper: "Houscaper", topogenesis: "Topogenesis" };
 export const paidByLabel = (from: BrandId) => `${NAME[from]} 계정에서 결제됨`;
 
 // 옮겨 온 캠페인도 받는 브랜드 그래프의 '켜고 끈 날짜' 계산에 들어간다.
 const movedSeries = (use: MovedAd[]): CampaignSeries[] => use.map((m) => ({ name: m.name, state: m.state, days: m.days.map((d) => ({ date: d.date, spend: d.spend })) }));
+
+// 1일 보기 시간별: 자체 시간별에 옮겨 온 캠페인의 시간별을 더한다. 자체 소스가 없어도(일 합계만 있어도) 옮겨 온 쪽 시간별만으로 만든다. 읽지 못한 게 있으면 null.
+function mergeHours(base: AdHour[] | null, hasBase: boolean, use: MovedAd[], range: DateRange): AdHour[] | null {
+  if (range.days !== 1) return null;
+  if (hasBase && base === null) return null; // 자체 계정의 시간별을 못 읽었으면 옮겨 온 것만 보여 줘 합계가 작아지지 않게 한다
+  if (use.some((m) => !m.hours)) return null;
+  return addHours(base ?? [], use.map((m) => m.hours ?? []));
+}
 
 const zeroDays = (range: DateRange): DayRow[] => eachDay(range.prev.from, range.to).map((date) => ({ date, spend: 0, impressions: 0, clicks: 0 }));
 
@@ -51,6 +60,7 @@ export function mergeMetaMoved(view: BrandId, own: MetaSummary | null, others: (
     notes,
     moved: [],
     series: [...(keepBase ? baseOk.series : []), ...movedSeries(use)],
+    hours: mergeHours(keepBase ? baseOk.hours : null, !!keepBase, use, range),
   };
 }
 
@@ -78,5 +88,6 @@ export function mergeAdsMoved(view: BrandId, own: GoogleAdsSummary | null, other
     notes,
     moved: [],
     series: [...(keepBase ? baseOk.series : []), ...movedSeries(use)],
+    hours: mergeHours(keepBase ? baseOk.hours : null, !!keepBase, use, range),
   };
 }

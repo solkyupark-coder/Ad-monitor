@@ -26,7 +26,8 @@ function ErrorPanel({ title, reason }: { title: string; reason: string }) {
 
 export function Ga4Panel({ g, range }: { g: Ga4Summary; range: DateRange }) {
   if (!g.ok) return <ErrorPanel title="웹사이트 (GA4)" reason={g.reason} />;
-  const { real, realPrev, split } = g;
+  const { real, split } = g;
+  const realPrev = range.today ? null : g.realPrev; // 오늘은 하루가 안 끝나 어제 전체와 견주지 않는다
   // 기본 화면은 의심 트래픽(데이터센터 도시·참여 5초 미만)을 뺀 실수치만 보여 준다.
   const clean = g.geo.filter((r) => !r.flag);
   const countries = byCountry(clean).slice(0, 10);
@@ -47,16 +48,16 @@ export function Ga4Panel({ g, range }: { g: Ga4Summary; range: DateRange }) {
       )}
       <div className="kpis">
         <Stat label="실사용자" value={`${n(real.activeUsers)}명`} hero>
-          <Delta cur={real.activeUsers} prev={realPrev.activeUsers} goodWhen="up" />
+          <Delta cur={real.activeUsers} prev={realPrev?.activeUsers ?? null} goodWhen="up" />
         </Stat>
         <Stat label="세션" value={real.sessions} kind="count">
-          <Delta cur={real.sessions} prev={realPrev.sessions} goodWhen="up" />
+          <Delta cur={real.sessions} prev={realPrev?.sessions ?? null} goodWhen="up" />
         </Stat>
         <Stat label="참여율" value={pct(real.engagementRate)}>
-          <Delta cur={real.engagementRate} prev={realPrev.engagementRate} goodWhen="up" />
+          <Delta cur={real.engagementRate} prev={realPrev?.engagementRate ?? null} goodWhen="up" />
         </Stat>
         <Stat label="세션당 참여시간" value={sec(real.avgEngagementSec)}>
-          <Delta cur={real.avgEngagementSec} prev={realPrev.avgEngagementSec} goodWhen="up" />
+          <Delta cur={real.avgEngagementSec} prev={realPrev?.avgEngagementSec ?? null} goodWhen="up" />
         </Stat>
       </div>
 
@@ -270,7 +271,7 @@ export function AdsPanel({ a, ga, range }: { a: GoogleAdsSummary; ga: Ga4Summary
   const curDays = a.days.slice(-n_);
   const cur = sum(curDays);
   const prevDays = a.days.slice(-2 * n_, -n_);
-  const prev = prevDays.length ? sum(prevDays) : null;
+  const prev = prevDays.length && !range.today ? sum(prevDays) : null;
   const k = (t: { clicks: number; cost: number; impressions: number }) => ({
     ...t,
     ctr: t.impressions ? t.clicks / t.impressions : 0,
@@ -420,7 +421,7 @@ export function VercelPanel({ v, ga, range }: { v: VercelSummary; ga: Ga4Summary
   const failed = inRange.filter((d) => d.state === "ERROR").length;
   const a = v.analytics;
   const cur = a.ok ? a.days.slice(-range.days) : [];
-  const prev = a.ok ? a.days.slice(0, -range.days) : [];
+  const prev = a.ok && !range.today ? a.days.slice(0, -range.days) : [];
   const sum = (ds: { visitors: number; pageviews: number }[], k: "visitors" | "pageviews") => ds.reduce((x, d) => x + d[k], 0);
   const gaUsers = ga && ga.ok ? ga.real.activeUsers : null;
   const visitors = sum(cur, "visitors");

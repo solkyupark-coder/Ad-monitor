@@ -3,6 +3,7 @@
 // 토큰·키 값은 화면·로그에 내지 않는다.
 import type { BrandId } from "@/lib/platforms";
 import { offsetMs, rangeInstants, type DateRange } from "@/lib/range";
+import type { CountHour } from "@/lib/hourly";
 
 export type RevenueSummary =
   | {
@@ -118,9 +119,10 @@ export async function revenueSummary(brand: BrandId, range: DateRange): Promise<
 
 // 일별 결제 건수(그래프용): 직전 기간 시작부터 기간 끝까지. 날짜 경계는 DASHBOARD_UTC_OFFSET_HOURS.
 // 그래프에서 '결제가 있었던 날' 표시에만 쓰며, 합계는 revenueSummary 가 기준이다.
-export type RevenueDays = { ok: true; source: "polar" | "supabase"; days: { date: string; orders: number }[]; truncated: boolean } | { ok: false; reason: string };
+export type RevenueDays = { ok: true; source: "polar" | "supabase"; days: { date: string; orders: number }[]; hours: CountHour[]; truncated: boolean } | { ok: false; reason: string };
 
 const localDate = (t: number) => new Date(t + offsetMs()).toISOString().slice(0, 10);
+const localHour = (t: number) => new Date(t + offsetMs()).getUTCHours();
 
 async function supabaseDates(prefix: string, since: Date, until: Date): Promise<{ ok: true; dates: number[]; truncated: boolean } | { ok: false; reason: string }> {
   const url = (process.env[`${prefix}_SUPABASE_URL`] ?? "").replace(/\/+$/, "");
@@ -166,5 +168,14 @@ export async function revenueDays(brand: BrandId, range: DateRange): Promise<Rev
   }
   const by = new Map<string, number>();
   for (const t of times) by.set(localDate(t), (by.get(localDate(t)) ?? 0) + 1);
-  return { ok: true, source, days: [...by.entries()].map(([date, orders]) => ({ date, orders })).sort((a, b) => a.date.localeCompare(b.date)), truncated };
+  // 1일 보기용 시간별 건수(같은 주문 시각에서 뽑는다).
+  const byHour = new Map<string, CountHour>();
+  for (const t of times) {
+    const k = `${localDate(t)}|${localHour(t)}`;
+    const c = byHour.get(k) ?? { date: localDate(t), hour: localHour(t), value: 0 };
+    c.value += 1;
+    byHour.set(k, c);
+  }
+  const hours = [...byHour.values()].sort((a, b) => a.date.localeCompare(b.date) || a.hour - b.hour);
+  return { ok: true, source, days: [...by.entries()].map(([date, orders]) => ({ date, orders })).sort((a, b) => a.date.localeCompare(b.date)), hours, truncated };
 }

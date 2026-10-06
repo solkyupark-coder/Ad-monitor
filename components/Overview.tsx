@@ -80,8 +80,8 @@ export function OverviewPanel({ o, range, costPerEngaged, combo, brandLabel }: {
 
       {combo && (
         <div className="combo-wrap">
-          <h3>{brandLabel} 일별 추이 <span className="fine-inline">광고비·사용자·클릭·결제를 한 그래프에</span></h3>
-          <ComboChart combo={combo} title={`${brandLabel} 일별 추이`} />
+          <h3>{brandLabel} {combo.granularity === "hour" ? "시간별" : "일별"} 추이 <span className="fine-inline">광고비·사용자·클릭·결제를 한 그래프에</span></h3>
+          <ComboChart combo={combo} title={`${brandLabel} ${combo.granularity === "hour" ? "시간별" : "일별"} 추이`} />
         </div>
       )}
 

@@ -26,6 +26,10 @@ const textW = (s: string) => [...s].reduce((a, c) => a + (c.charCodeAt(0) > 255 
 
 export function ComboChart({ combo, title }: { combo: ComboData; title: string }) {
   const { days, prev, events, currency } = combo;
+  const hourly = combo.granularity === "hour";
+  const when = (d: ComboDay) => (hourly ? `${fmtDate(d.date)} ${d.h}시` : `${fmtDate(d.date)} (${wd(d.date)})`);
+  const tick = (d: ComboDay) => (hourly ? `${d.h}시` : fmtDate(d.date));
+  const usersName = combo.usersLabel;
   const has: Record<Exclude<Key, "prev">, boolean> = {
     spend: currency !== null && days.some((d) => d.spend !== null),
     users: days.some((d) => d.users !== null),
@@ -86,7 +90,18 @@ export function ComboChart({ combo, title }: { combo: ComboData; title: string }
   const rmax = niceMax(Math.max(...rightVals, 0));
   const yl = (v: number) => T + ph * (1 - v / lmax);
   const yr = (v: number) => T + ph * (1 - v / rmax);
-  const path = (src: ComboDay[], k: "spend" | "users" | "clicks", y: (v: number) => number) => src.map((d, i) => `${i ? "L" : "M"}${cx(i).toFixed(1)},${y(d[k] ?? 0).toFixed(1)}`).join("");
+  // 시간별 오늘 보기는 지금 이후 칸이 비어 있다(null): 선을 거기서 끊는다. 일별 보기에서는 값이 없으면 0으로 그린다.
+  const path = (src: ComboDay[], k: "spend" | "users" | "clicks", y: (v: number) => number) => {
+    let d = "";
+    let pen = false;
+    src.forEach((p, i) => {
+      const v = p[k];
+      if (hourly && v === null) { pen = false; return; }
+      d += `${pen ? "L" : "M"}${cx(i).toFixed(1)},${y(v ?? 0).toFixed(1)}`;
+      pen = true;
+    });
+    return d;
+  };
 
   const bw = Math.min(24, Math.max(2, band - 2));
   const barPath = (i: number, v: number) => {
@@ -96,7 +111,7 @@ export function ComboChart({ combo, title }: { combo: ComboData; title: string }
     return r <= 0.5 ? `M${x},${yb}h${bw}v-0.5h-${bw}z` : `M${x},${yb}L${x},${y + r}Q${x},${y} ${x + r},${y}L${x + bw - r},${y}Q${x + bw},${y} ${x + bw},${y + r}L${x + bw},${yb}Z`;
   };
 
-  const active = hover ?? n - 1;
+  const active = hover ?? (hourly ? Math.min(n - 1, combo.nowHour ?? 23) : n - 1);
   const locate = (clientX: number, el: SVGSVGElement) => {
     const rect = el.getBoundingClientRect();
     const sx = ((clientX - rect.left) / rect.width) * w;
@@ -110,16 +125,16 @@ export function ComboChart({ combo, title }: { combo: ComboData; title: string }
   const tipRight = cx(active) < w / 2;
   const rows: { k: string; label: string; v: string; pv: string | null; kind: "bar" | "line1" | "line2" | "mark" }[] = [];
   if (show("spend")) rows.push({ k: "spend", label: "광고비", v: money(d.spend), pv: pd ? money(pd.spend) : null, kind: "bar" });
-  if (show("users")) rows.push({ k: "users", label: "실사용자", v: `${cnt(d.users)}명`, pv: pd ? `${cnt(pd.users)}명` : null, kind: "line1" });
+  if (show("users")) rows.push({ k: "users", label: usersName, v: `${cnt(d.users)}명`, pv: pd ? `${cnt(pd.users)}명` : null, kind: "line1" });
   if (show("clicks")) rows.push({ k: "clicks", label: "광고 클릭", v: `${cnt(d.clicks)}번`, pv: pd ? `${cnt(pd.clicks)}번` : null, kind: "line2" });
   if (stripOn) rows.push({ k: "orders", label: "결제", v: `${cnt(d.orders)}건`, pv: pd ? `${cnt(pd.orders)}건` : null, kind: "mark" });
 
   const legend: { k: Key; label: string; kind: "bar" | "line1" | "line2" | "mark" | "dash"; off?: string }[] = [
     { k: "spend", label: `광고비${currency ? ` (${currency === "KRW" ? "원" : currency})` : ""}`, kind: "bar", off: has.spend ? undefined : combo.notes[0] ?? "광고 소스가 연결되지 않았습니다" },
-    { k: "users", label: "실사용자", kind: "line1", off: has.users ? undefined : "GA4가 연결되지 않았거나 일별 값을 읽지 못했습니다" },
+    { k: "users", label: usersName, kind: "line1", off: has.users ? undefined : "GA4가 연결되지 않았거나 일별 값을 읽지 못했습니다" },
     { k: "clicks", label: "광고 클릭", kind: "line2", off: has.clicks ? undefined : "광고 소스가 연결되지 않았습니다" },
     { k: "orders", label: "결제", kind: "mark", off: has.orders ? undefined : "결제(Polar·Supabase)가 연결되지 않았습니다" },
-    { k: "prev", label: "직전 기간", kind: "dash", off: prev.length === n ? undefined : "직전 기간 데이터가 없습니다" },
+    { k: "prev", label: hourly ? "전날" : "직전 기간", kind: "dash", off: prev.length === n ? undefined : "비교할 이전 기간 데이터가 없습니다" },
   ];
   const KeyIcon = ({ kind }: { kind: string }) => (
     <svg width="22" height="12" viewBox="0 0 22 12" aria-hidden="true" className="ckey">
@@ -133,6 +148,24 @@ export function ComboChart({ combo, title }: { combo: ComboData; title: string }
 
   return (
     <div className="combo">
+      {combo.compare && (
+        <div className="cmp" aria-label={combo.compare.title}>
+          <p className="cmp-t">{combo.compare.title}</p>
+          <ul>
+            {combo.compare.rows.map((r) => {
+              const f = (v: number) => (r.won ? fmtValue(v, "won", currency ?? "KRW") : fmtValue(v, "count"));
+              const diff = r.prev > 0 ? (r.cur - r.prev) / r.prev : null;
+              return (
+                <li key={r.key}>
+                  <i>{r.label}</i>
+                  <b>{f(r.cur)}</b>
+                  <span>{r.prev > 0 ? `${diff! > 0 ? "+" : ""}${Math.round(diff! * 100)}% · 전날 ${f(r.prev)}` : r.cur > 0 ? `전날 0` : "전날도 0"}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
       <div className="combo-legend" role="group" aria-label={`${title} 지표 켜고 끄기`}>
         {legend.map((l) => (
           <button
@@ -151,17 +184,17 @@ export function ComboChart({ combo, title }: { combo: ComboData; title: string }
       </div>
       <div className="axis-keys" aria-hidden="true">
         <span>{show("spend") ? "◀ 왼쪽 축: 광고비 막대" : ""}</span>
-        <span>{rightKeys.length ? `오른쪽 축: ${rightKeys.map((k) => (k === "users" ? "실사용자" : "클릭")).join("·")} 선 ▶` : ""}</span>
+        <span>{rightKeys.length ? `오른쪽 축: ${rightKeys.map((k) => (k === "users" ? usersName : "클릭")).join("·")} 선 ▶` : ""}</span>
       </div>
       <div className="chart combo-chart" ref={box}>
         <div className="ctip" style={{ left: `${(cx(active) / w) * 100}%`, transform: tipRight ? "translateX(12px)" : "translateX(calc(-100% - 12px))", opacity: hover === null ? 0 : 1 }} aria-hidden>
-          <strong>{fmtDate(d.date)} ({wd(d.date)})</strong>
+          <strong>{when(d)}</strong>
           {rows.map((r) => (
             <span key={r.k} className="crow">
               <KeyIcon kind={r.kind} />
               <b>{r.v}</b>
               <i>{r.label}</i>
-              {r.pv !== null && <em>직전 {fmtDate(prev[active].date)} {r.pv}</em>}
+              {r.pv !== null && <em>직전 {when(prev[active])} {r.pv}</em>}
             </span>
           ))}
           {dayEvents.map((e) => (
@@ -171,7 +204,7 @@ export function ComboChart({ combo, title }: { combo: ComboData; title: string }
         <svg
           viewBox={`0 0 ${w} ${H}`}
           role="img"
-          aria-label={`${title}: 최근 ${n}일 광고비·실사용자·클릭·결제 일별 추이`}
+          aria-label={hourly ? `${title}: 시간별 광고비·사용자·클릭·결제 추이` : `${title}: 최근 ${n}일 광고비·실사용자·클릭·결제 일별 추이`}
           tabIndex={0}
           onPointerMove={(e) => locate(e.clientX, e.currentTarget)}
           onPointerLeave={() => setHover(null)}
@@ -191,8 +224,8 @@ export function ComboChart({ combo, title }: { combo: ComboData; title: string }
             </g>
           ))}
           <line x1={L} x2={w - R} y1={yb} y2={yb} stroke="var(--axis)" strokeWidth="1" />
-          {[0, Math.floor((n - 1) / 2), n - 1].filter((v, i, a) => a.indexOf(v) === i).map((i) => (
-            <text key={i} x={cx(i)} y={H - 7} textAnchor={i === 0 ? "start" : i === n - 1 ? "end" : "middle"} className="axis">{fmtDate(days[i].date)}</text>
+          {(hourly ? [0, 6, 12, 18, 23] : [0, Math.floor((n - 1) / 2), n - 1]).filter((v, i, a) => a.indexOf(v) === i && v < n).map((i) => (
+            <text key={i} x={cx(i)} y={H - 7} textAnchor={i === 0 ? "start" : i === n - 1 ? "end" : "middle"} className="axis">{tick(days[i])}</text>
           ))}
 
           {/* 막대: 광고비 */}
@@ -227,10 +260,18 @@ export function ComboChart({ combo, title }: { combo: ComboData; title: string }
             </g>
           ))}
 
+          {/* 오늘 보기: 지금 시각 표시 */}
+          {hourly && combo.nowHour !== null && (
+            <g>
+              <line x1={cx(combo.nowHour) + band / 2} x2={cx(combo.nowHour) + band / 2} y1={T} y2={yb} stroke="var(--ink2)" strokeWidth="1" strokeDasharray="1 3" opacity=".7" />
+              <text x={cx(combo.nowHour) + band / 2 + 3} y={yb - 4} className="ev-t">지금</text>
+            </g>
+          )}
+
           {/* 십자선과 지금 값 점 */}
           {hover !== null && <line x1={cx(active)} x2={cx(active)} y1={T} y2={yb} stroke="var(--axis)" strokeWidth="1" />}
-          {show("users") && <><circle cx={cx(active)} cy={yr(d.users ?? 0)} r="6" fill="var(--surface)" /><circle cx={cx(active)} cy={yr(d.users ?? 0)} r="4" fill="var(--s2)" /></>}
-          {show("clicks") && <><circle cx={cx(active)} cy={yr(d.clicks ?? 0)} r="6" fill="var(--surface)" /><circle cx={cx(active)} cy={yr(d.clicks ?? 0)} r="4" fill="var(--s3)" /></>}
+          {show("users") && d.users !== null && <><circle cx={cx(active)} cy={yr(d.users ?? 0)} r="6" fill="var(--surface)" /><circle cx={cx(active)} cy={yr(d.users ?? 0)} r="4" fill="var(--s2)" /></>}
+          {show("clicks") && d.clicks !== null && <><circle cx={cx(active)} cy={yr(d.clicks ?? 0)} r="6" fill="var(--surface)" /><circle cx={cx(active)} cy={yr(d.clicks ?? 0)} r="4" fill="var(--s3)" /></>}
         </svg>
       </div>
       {outRange.length > 0 && (
@@ -248,7 +289,7 @@ export function ComboChart({ combo, title }: { combo: ComboData; title: string }
           <table>
             <thead>
               <tr>
-                <th>날짜</th>
+                <th>{hourly ? "시각" : "날짜"}</th>
                 {has.spend && <th>광고비</th>}
                 {has.users && <th>실사용자</th>}
                 {has.clicks && <th>클릭</th>}
@@ -259,12 +300,12 @@ export function ComboChart({ combo, title }: { combo: ComboData; title: string }
             <tbody>
               {days.map((dd, i) => (
                 <tr key={dd.date}>
-                  <td>{dd.date}</td>
+                  <td>{hourly ? `${dd.date} ${dd.h}시` : dd.date}</td>
                   {has.spend && <td>{money(dd.spend)}</td>}
                   {has.users && <td>{cnt(dd.users)}</td>}
                   {has.clicks && <td>{cnt(dd.clicks)}</td>}
                   {has.orders && <td>{cnt(dd.orders)}</td>}
-                  {prev.length === n && <td>{fmtDate(prev[i].date)}: {[has.spend ? money(prev[i].spend) : null, has.users ? cnt(prev[i].users) : null, has.clicks ? cnt(prev[i].clicks) : null, has.orders ? cnt(prev[i].orders) : null].filter((x) => x !== null).join(" · ")}</td>}
+                  {prev.length === n && <td>{hourly ? `${prev[i].h}시` : fmtDate(prev[i].date)}: {[has.spend ? money(prev[i].spend) : null, has.users ? cnt(prev[i].users) : null, has.clicks ? cnt(prev[i].clicks) : null, has.orders ? cnt(prev[i].orders) : null].filter((x) => x !== null).join(" · ")}</td>}
                 </tr>
               ))}
             </tbody>

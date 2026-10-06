@@ -8,7 +8,9 @@ export type DateRange = {
   from: string; // YYYY-MM-DD (포함)
   to: string; // YYYY-MM-DD (포함)
   days: number;
-  preset: number | null; // 프리셋이면 그 일수, 직접 지정이면 null
+  preset: number | null; // 프리셋이면 그 일수(어제 = 1), 직접 지정·오늘이면 null
+  today: boolean; // range=today: 오늘 0시부터 지금까지(하루가 안 끝남 — 비교는 어제 같은 시각까지)
+  nowHour: number | null; // 오늘 보기에서 지금 시각(0-23, 날짜 경계 시간대). 아니면 null
   label: string; // 화면 표시용
   prev: { from: string; to: string }; // 같은 길이의 직전 기간(비교용)
 };
@@ -34,26 +36,37 @@ export function yesterdayDate(now = Date.now()): string {
   return iso(todayMs(now) - DAY);
 }
 
-function build(fromMs: number, toMs: number, preset: number | null): DateRange {
+function build(fromMs: number, toMs: number, preset: number | null, now?: { today: true; hour: number }): DateRange {
   const days = Math.round((toMs - fromMs) / DAY) + 1;
   const md = (ms: number) => `${Number(iso(ms).slice(5, 7))}/${Number(iso(ms).slice(8, 10))}`;
+  const label = now
+    ? `오늘 (${md(fromMs)}, 지금 ${now.hour}시까지)`
+    : preset === 1
+      ? `어제 (${md(fromMs)})`
+      : preset
+        ? `최근 ${preset}일 (${md(fromMs)}–${md(toMs)}, 어제까지)`
+        : `${md(fromMs)}–${md(toMs)} (${days}일)`;
   return {
     from: iso(fromMs),
     to: iso(toMs),
     days,
     preset,
-    label: preset ? `최근 ${preset}일 (${md(fromMs)}–${md(toMs)}, 어제까지)` : `${md(fromMs)}–${md(toMs)} (${days}일)`,
+    today: !!now,
+    nowHour: now ? now.hour : null,
+    label,
     prev: { from: iso(fromMs - days * DAY), to: iso(fromMs - DAY) },
   };
 }
 
 export function parseRange(q: { range?: string; from?: string; to?: string }, now = Date.now()): DateRange {
   const today = todayMs(now);
+  // 오늘(지금까지): 하루가 안 끝났으니 비교는 어제 '같은 시각까지'(시간별 소스에서만 정확히 맞춘다).
+  if ((q.range ?? "").toLowerCase() === "today") return build(today, today, null, { today: true, hour: Math.floor(((now + offsetMs()) % DAY) / 3600000) });
   const f = parse(q.from);
   const t = parse(q.to);
   if (f !== null && t !== null && f <= t && t <= today && (t - f) / DAY + 1 <= MAX_DAYS) return build(f, t, null);
   const n = Number(q.range);
-  const preset = (PRESETS as readonly number[]).includes(n) ? n : 7;
+  const preset = n === 1 || (PRESETS as readonly number[]).includes(n) ? n : 7; // 1 = 어제 하루
   const to = today - DAY;
   return build(to - (preset - 1) * DAY, to, preset);
 }
@@ -72,5 +85,6 @@ export function eachDay(from: string, to: string): string[] {
 }
 
 export function rangeQuery(r: DateRange): string {
+  if (r.today) return "range=today";
   return r.preset ? `range=${r.preset}` : `from=${r.from}&to=${r.to}`;
 }

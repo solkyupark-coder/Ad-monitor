@@ -151,8 +151,8 @@ function MetaPanel({ m, range }: { m: MetaSummary; range: DateRange }) {
                   const st = c.status && !PLAIN_STATUS.has(c.status) ? STATUS[c.status] ?? { text: c.status, level: "hold" as const } : null;
                   return (
                   <tr key={`${c.account ?? ""}-${c.name}-${i}`} className={isStopped(c.state) ? "off" : undefined}>
-                    <td className="name" title={c.account ? `${c.name} · ${c.account}` : c.name}>
-                      {c.name}
+                    <td className="name wrap" title={c.account ? `${c.name} · ${c.account}` : c.name}>
+                      <span className="nm">{c.name}</span>
                       <span className="tags">
                         <StateBadge state={c.state} raw={c.status} />
                         {c.paidBy && <span className="vchip warn" title="이 광고비는 다른 브랜드의 광고 계정에서 결제됐습니다">{c.paidBy}</span>}

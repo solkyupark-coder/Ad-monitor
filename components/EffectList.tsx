@@ -34,7 +34,7 @@ export function EffectList({ rows }: { rows: EffectRow[] }) {
               <div className="fx-top">
                 <span className="fx-name" title={r.name}>
                   <span className={`swatch ${r.channel === "meta" ? "c1" : "c2"}`} aria-hidden="true" />
-                  <span className="fx-name-t">{r.name}</span>
+                  <span className="fx-name-t nm">{r.name}</span>
                   <span className="fine-inline">{r.channel === "meta" ? "메타" : "구글"}</span>
                 </span>
                 <span className="tags">

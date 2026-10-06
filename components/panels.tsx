@@ -3,7 +3,7 @@ import type { GoogleAdsSummary } from "@/lib/googleads";
 import type { RevenueSummary } from "@/lib/revenue";
 import type { DateRange } from "@/lib/range";
 import type { VercelSummary, VercelTop } from "@/lib/vercel";
-import { adsEngagement, byCountry, compareRevenue, findGoogleCpc, LOW_ENGAGEMENT_SEC } from "@/lib/traffic";
+import { adsEngagement, byCountry, compareRevenue, compareVisitors, findGoogleCpc, LOW_ENGAGEMENT_SEC } from "@/lib/traffic";
 import { fmtCompact, fmtValue } from "@/lib/format";
 import { TrendChart } from "@/components/TrendChart";
 import { BarList, Delta, Stat } from "@/components/ui";
@@ -368,8 +368,8 @@ export function AdsPanel({ a, ga, range }: { a: GoogleAdsSummary; ga: Ga4Summary
               <tbody>
                 {topCampaigns.map((x) => (
                   <tr key={x.name} className={isStopped(x.state) ? "off" : undefined}>
-                    <td className="name" title={x.name}>
-                      {x.name}
+                    <td className="name wrap" title={x.name}>
+                      <span className="nm">{x.name}</span>
                       {(x.state && x.state !== "unknown") || x.paidBy ? (
                         <span className="tags">
                           <StateBadge state={x.state} />
@@ -457,12 +457,24 @@ export function VercelPanel({ v, ga, range }: { v: VercelSummary; ga: Ga4Summary
         </Stat>
       </div>
       {!a.ok && <p className="note">{a.reason}</p>}
-      {a.ok && gaUsers !== null && visitors > 0 && (
-        <p className="fine">
-          GA4 실사용자(봇 제외) {n(gaUsers)}명 · Vercel 방문자 {n(visitors)}명
-          {visitors > gaUsers * 1.5 ? " — Vercel이 훨씬 많다: 광고 차단·쿠키 거부로 GA에 안 잡히는 방문이 있거나 GA 봇 제외가 넓다." : gaUsers > visitors * 1.5 ? " — GA가 훨씬 많다: GA에 봇·중복 사용자가 남아 있을 수 있다." : " — 두 집계가 비슷하다."}
-        </p>
-      )}
+      {a.ok && gaUsers !== null && visitors > 0 && (() => {
+        const cmp = compareVisitors(gaUsers, visitors, range.days);
+        return (
+          <div className={`vcmp ${cmp?.level ?? "ok"}`}>
+            <p className="fine">
+              GA4 실사용자(봇 제외) <strong>{n(gaUsers)}명</strong> · Vercel 방문자 <strong>{n(visitors)}명</strong>
+              {cmp && <> — <b className="vcmp-h">{cmp.headline}</b></>}
+            </p>
+            {cmp && cmp.causes.length > 0 && (
+              <ul className="vcmp-causes">
+                {cmp.causes.map((c) => (
+                  <li key={c}>{c}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })()}
       {a.ok && (
         <>
           <div className="charts">

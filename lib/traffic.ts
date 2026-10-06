@@ -169,3 +169,36 @@ export function compareRevenue(
   }
   return { level: "ok", message: "GA purchase와 실제 결제가 일치합니다." };
 }
+
+// GA4 실사용자(봇·데이터센터·PTC 제외) 와 Vercel 방문자를 견준다. 차이는 큰 쪽 기준 비율 — |V − G| / max(V, G).
+// 주의: Vercel 방문자는 '일별 방문자의 합'이라(쿠키 없이 하루 단위로 센다) 며칠 사이 다시 온 사람이 중복으로 세어져 보통 GA보다 크다.
+export const VISITOR_DIFF_NOTICE = 0.1; // 이 비율부터 '약간 차이'
+export const VISITOR_DIFF_BIG = 0.2; // 이 비율부터 '차이 큼'
+
+export type VisitorCompare = { level: "ok" | "notice" | "big"; diff: number; higher: "vercel" | "ga" | "same"; headline: string; causes: string[] };
+
+export function compareVisitors(gaUsers: number, vercelVisitors: number, days: number): VisitorCompare | null {
+  if (!(gaUsers > 0) || !(vercelVisitors > 0)) return null;
+  const hi = Math.max(gaUsers, vercelVisitors);
+  const diff = Math.abs(vercelVisitors - gaUsers) / hi;
+  const higher = vercelVisitors === gaUsers ? "same" : vercelVisitors > gaUsers ? "vercel" : "ga";
+  const p = `${Math.round(diff * 100)}%`;
+  const who = higher === "vercel" ? "Vercel이" : "GA4가";
+  if (diff < VISITOR_DIFF_NOTICE) return { level: "ok", diff, higher, headline: `두 집계가 비슷하다(차이 ${p}).`, causes: [] };
+  const dup = days > 1 ? `Vercel 방문자는 일별 방문자의 합이라, 며칠에 걸쳐 다시 온 사람이 날마다 새로 세어진다(${days}일 기간이면 보통 GA4보다 큼).` : "";
+  const causes =
+    higher === "vercel"
+      ? [
+          "봇 제외 기준 차이: GA4 수치는 데이터센터 도시·낮은 참여 국가·리워드/클릭팜(PTC) 유입을 뺀 값이고, Vercel은 그런 걸 거르지 않아 봇·크롤러가 섞여 있을 수 있다.",
+          "광고 차단기·추적 방지 브라우저: GA4 스크립트만 막히고 Vercel(서버 쪽 집계)에는 잡힌다.",
+          "동의(쿠키) 배너: 거부하면 GA4는 측정하지 않는데 Vercel은 쿠키 없이 센다.",
+          ...(dup ? [dup] : []),
+        ]
+      : [
+          "GA4에 봇·중복 사용자가 남아 있을 수 있다(데이터센터 도시 밖 봇, 사용자 ID 없는 재방문).",
+          "Vercel Web Analytics 스크립트가 일부 페이지에 없거나 늦게 켜졌을 수 있다.",
+          "Vercel은 쿠키 없는 집계라 광고 차단기에 일부 막힐 수 있다.",
+        ];
+  if (diff < VISITOR_DIFF_BIG) return { level: "notice", diff, higher, headline: `${who} ${p} 더 많다(약간 차이).`, causes: causes.slice(0, 1) };
+  return { level: "big", diff, higher, headline: `차이 큼: ${who} ${p} 더 많다.`, causes };
+}

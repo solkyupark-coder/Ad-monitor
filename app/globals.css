@@ -238,10 +238,14 @@ body:has(dialog[open]) { overflow: hidden; } /* 시트가 열려 있으면 뒤 �
 .sbadge { display: inline-flex; align-items: center; gap: 3px; flex: none; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; font-size: 11px; font-weight: 700; white-space: nowrap; }
 .sbadge.active { color: var(--good); } .sbadge.paused { color: var(--ink2); } .sbadge.removed { color: var(--ink2); border-style: dashed; }
 /* 이미 꺼진(중지·삭제) 캠페인 행은 회색으로 낮춘다 */
-.data tr.off td, .fx-row.off { color: var(--ink2); }
+/* 이미 꺼진 행은 이름·숫자·막대를 회색으로 흐리게(배지는 그대로 또렷하게): 집행 중인 캠페인이 먼저 눈에 들어온다 */
+.data tr.off .nm, .data tr.off td.num, .data tr.off td .num, .data tr.off .inline-bar { color: var(--muted); opacity: .55; }
 .data tr.off .inline-bar span { background: var(--muted); }
-.fx-row.off .fx-name, .fx-row.off .fx-metrics, .fx-row.off .fx-why { color: var(--ink2); font-weight: 500; }
-.fx-row.off .swatch { opacity: .45; }
+.data tr:not(.off) td.name .nm { font-weight: 600; }
+.fx-row.off .fx-name-t, .fx-row.off .fx-metrics, .fx-row.off .fx-why, .fx-row.off .fine, .fx-row.off .fine-inline, .fx-row.off .swatch { color: var(--muted); opacity: .55; }
+.fx-row.off .fx-metrics i { color: var(--muted); }
+.fx-row.off .vchip:not(.sbadge) { opacity: .55; }
+.fx-row:not(.off) .fx-name-t { font-weight: 700; }
 .vchip.good { color: var(--good); } .vchip.warn { color: var(--warn); } .vchip.bad { color: var(--bad); } .vchip.hold { color: var(--ink2); }
 .badge-level { display: inline-flex; flex-direction: column; align-items: center; gap: 1px; }
 
@@ -370,3 +374,15 @@ body:has(dialog[open]) { overflow: hidden; } /* 시트가 열려 있으면 뒤 �
 .ev-t { font-size: 10px; font-weight: 600; fill: var(--ink); paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round; }
 .combo .scroll { overflow-x: auto; }
 @media (max-width: 640px) { .clg { min-height: 44px; } }
+
+/* 캠페인 이름: 한 줄로 자르지 않고 두 줄까지 보이게(전체 이름은 마우스 올리면 툴팁, 폰에서는 전부 줄바꿈) */
+.data td.name.wrap { white-space: normal; min-width: 150px; max-width: 280px; overflow: visible; text-overflow: clip; }
+.nm { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; line-height: 1.35; }
+.fx-name .fx-name-t.nm { white-space: normal; }
+@media (max-width: 640px) { .nm { display: block; -webkit-line-clamp: unset; overflow: visible; } .data td.name.wrap { min-width: 160px; } }
+/* GA4 실사용자 vs Vercel 방문자 비교 */
+.vcmp { margin: 8px 0 0; }
+.vcmp .vcmp-h { font-weight: 700; }
+.vcmp.big .vcmp-h { color: var(--warn); }
+.vcmp-causes { margin: 4px 0 0; padding-left: 18px; font-size: 12px; color: var(--ink2); }
+.vcmp-causes li { margin: 2px 0; }

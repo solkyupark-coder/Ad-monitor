@@ -95,6 +95,28 @@ cashlee.co, ad2click.co 같은 "클릭하면 돈 주는" 사이트에서 오는 
 - **한계**: 리퍼러를 숨기는 PTC 트래픽(소스가 `(direct)`로 찍힘)은 도메인으로 가려낼 수 없다. 그런 경우는 기존 "의심 트래픽"(데이터센터 도시·참여 5초 미만) 판정이 따로 걸러 준다. Vercel 일별 차감은 선택 기간 상위 100개 유입 도메인 안에서만 찾는다.
 
 
+## 신규 가입 수 (`lib/signups.ts`)
+
+브랜드별 신규 가입을 **개수만** 센다(읽기 전용). 한눈에 보기 KPI 카드("신규 가입"·"가입 1명당")와 겹침 그래프(●마커, 일별·시간별)에 나온다. 토포제네시스는 가입이 핵심 전환이라 KPI 맨 앞에 오고, 판정도 "결제 없음" 대신 "가입 없음"을 본다(하우스케이퍼는 결제가 핵심 — `{BRAND}_PRIMARY_KPI=signups|orders`로 바꾼다).
+
+- **개인정보**: 가입 *시각* 한 컬럼(`created_at`)만 읽는다. 이메일·이름·ID 컬럼은 요청에도 넣지 않는다.
+- **왜 뷰가 필요한가**: Supabase `auth.users`는 PostgREST(REST API)로 열려 있지 않다. 그래서 가입 시각만 보이는 뷰를 하나 만들고, 그 뷰를 읽기 전용 키로 읽는다. 결제 DB와 같은 접속 값(`{BRAND}_SUPABASE_URL`, `{BRAND}_SUPABASE_READONLY_KEY`)을 쓰므로 새 비밀값은 없다. Supabase SQL 편집기에서 **각 브랜드 프로젝트마다** 한 번 실행한다:
+
+```sql
+-- 가입 시각만 보이는 뷰(개인정보 컬럼 없음)
+create or replace view public.signups as
+  select created_at from auth.users;
+
+-- 공개(anon·로그인 사용자)에는 닫고, 읽기 전용 키가 쓰는 role에만 연다.
+revoke all on public.signups from anon, authenticated;
+grant select on public.signups to <읽기 전용 키가 쓰는 role>;  -- 예: service_role 대신 만든 전용 role
+```
+
+  뷰는 기본적으로 만든 사람 권한으로 `auth.users`를 읽으므로(security definer), `anon`·`authenticated`에서 `revoke` 하는 줄을 빼먹지 않는다 — 빼면 누구나 가입 시각을 볼 수 있다(이메일은 아니지만 가입 패턴이 노출된다). 읽기 전용 키가 어떤 role인지 모르면 Supabase 대시보드 → Settings → API에서 확인한다.
+- **이미 있는 테이블을 쓸 때**: `profiles` 같은 테이블이 가입마다 한 행씩 만들어진다면 뷰 없이 `{BRAND}_SIGNUP_TABLE=profiles`, `{BRAND}_SIGNUP_DATE_COLUMN=created_at`로 가리킨다(그 테이블도 읽기 전용 키에 select 권한이 있어야 하고, 이 앱은 날짜 컬럼만 요청한다).
+- **한계**: 한 번에 1000건까지만 읽는다(넘으면 카드에 "일부만 읽음" 표시 — 수치가 실제보다 작다). 가입은 광고로 온 사람만이 아니라 전체 가입이라 "가입 1명당 광고비"는 최소치다. 날짜 경계는 `DASHBOARD_UTC_OFFSET_HOURS`(기본 한국). 오늘 보기는 하루가 안 끝나 직전 기간과 견주지 않는다.
+- 설정이 없으면 하우스케이퍼는 카드가 안 보이고, 토포제네시스는 "연결 안 됨" 카드와 이유가 보인다.
+
 ## 메타 랜딩 페이지 조회 · 클릭 대비 도착률
 
 광고 효과 카드(메타 캠페인)에 **링크 클릭 → 랜딩 조회 → GA 세션** 한 줄이 붙고, 광고 상세(메타) 표에 "랜딩 조회" 열이 생긴다.

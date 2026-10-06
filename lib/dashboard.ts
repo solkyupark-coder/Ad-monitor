@@ -6,13 +6,14 @@ import { ga4Summary, type Ga4Summary } from "@/lib/ga4";
 import { googleAdsSummary, type GoogleAdsSummary } from "@/lib/googleads";
 import { revenueDays, revenueSummary, type RevenueSummary } from "@/lib/revenue";
 import { vercelSummary, type VercelSummary } from "@/lib/vercel";
-import { demoAds, demoGa4, demoMeta, demoOn, demoRevenue, demoRevenueDays, demoRevenueHours, demoVercel, demoYoutube } from "@/lib/demo";
+import { demoAds, demoGa4, demoMeta, demoOn, demoRevenue, demoRevenueDays, demoRevenueHours, demoSignups, demoVercel, demoYoutube } from "@/lib/demo";
 import { buildOverview, type Overview } from "@/lib/overview";
 import { buildEffect, type EffectReport } from "@/lib/effect";
 import { buildActions, type ActionItem } from "@/lib/actions";
 import { mergeAdsMoved, mergeMetaMoved } from "@/lib/merge";
 import { buildCombo, buildHourCombo, type ComboData } from "@/lib/combo";
 import { allEvents } from "@/lib/events";
+import { signupsConfigured, signupSummary, type SignupSummary } from "@/lib/signups";
 import type { DateRange } from "@/lib/range";
 
 export type Dashboard = {
@@ -29,6 +30,8 @@ export type Dashboard = {
   rev: RevenueSummary | null;
   ads: GoogleAdsSummary | null;
   vc: VercelSummary | null;
+  signups: SignupSummary | null; // 신규 가입(Supabase 가입 뷰). 연결 안 됐으면 null. 내보내기에서는 읽지 않는다
+  primary: "signups" | "orders"; // 이 브랜드의 핵심 전환(토포제네시스는 가입)
   combo: ComboData | null; // 겹쳐 그리는 일별 그래프(한눈에 보기). 내보내기에서는 만들지 않는다
   overview: Overview;
   effect: EffectReport;
@@ -41,6 +44,12 @@ const sumTotals = <T extends { clicks: number; impressions: number }>(days: T[],
   impressions: days.reduce((a, d) => a + d.impressions, 0),
 });
 
+// 브랜드의 핵심 전환: 토포제네시스는 가입, 하우스케이퍼는 결제. env {BRAND}_PRIMARY_KPI=signups|orders 로 바꾼다.
+export function primaryKpi(brand: BrandId, env: Record<string, string | undefined> = process.env): "signups" | "orders" {
+  const v = (env[`${BRANDS.find((b) => b.id === brand)!.prefix}_PRIMARY_KPI`] ?? "").trim().toLowerCase();
+  return v === "signups" || v === "orders" ? v : brand === "topogenesis" ? "signups" : "orders";
+}
+
 const DEMO_ON: PlatformId[] = ["meta", "youtube", "ga4", "revenue", "purchase_db", "vercel", "google_ads"];
 
 // skip: 내보내기처럼 일부 소스만 필요할 때 불필요한 외부 호출을 건너뛴다.
@@ -51,7 +60,7 @@ export async function loadDashboard(brand: BrandId, range: DateRange, skip: { yo
   // 다른 브랜드 광고 계정에서 결제됐지만 이 브랜드 광고인 캠페인(lib/attribution.ts 규칙)을 받아 오려고 다른 브랜드의 광고도 함께 읽는다(10분 캐시).
   const others = BRANDS.filter((b) => b.id !== brand).map((b) => ({ id: b.id, st: statusFor(b.id) }));
   const otherOn = (st: PlatformStatus[], id: PlatformId) => !demo && !!st.find((s) => s.platform.id === id)?.connected;
-  const [metaRaw, yt, ga, rev, adsRaw, vc, otherMeta, otherAds, revDays] = await Promise.all([
+  const [metaRaw, yt, ga, rev, adsRaw, vc, otherMeta, otherAds, revDays, signups] = await Promise.all([
     isOn("meta") ? (demo ? demoMeta(range) : metaSummary(brand, range)) : null,
     isOn("youtube") && !skip.youtube ? (demo ? demoYoutube() : youtubeSummary(brand)) : null,
     isOn("ga4") ? (demo ? demoGa4(range) : ga4Summary(brand, range)) : null,
@@ -61,7 +70,9 @@ export async function loadDashboard(brand: BrandId, range: DateRange, skip: { yo
     Promise.all(others.map((o) => (otherOn(o.st, "meta") ? metaSummary(o.id, range) : null))),
     Promise.all(others.map((o) => (otherOn(o.st, "google_ads") ? googleAdsSummary(o.id, range) : null))),
     isOn("revenue") && !skip.combo ? (demo ? demoRevenueDays(range) : revenueDays(brand, range)) : null,
+    !skip.combo && (demo || signupsConfigured(brand)) ? (demo ? demoSignups(range) : signupSummary(brand, range)) : null,
   ]);
+  const primary = primaryKpi(brand);
   const meta = demo ? metaRaw : mergeMetaMoved(brand, metaRaw, otherMeta, range);
   const ads = demo ? adsRaw : mergeAdsMoved(brand, adsRaw, otherAds, range);
   const overview = buildOverview({
@@ -70,6 +81,9 @@ export async function loadDashboard(brand: BrandId, range: DateRange, skip: { yo
     realUsers: ga && ga.ok ? ga.real.activeUsers : null,
     botUsers: ga && ga.ok ? ga.split.suspectUsers : null,
     internalUsers: ga && ga.ok && ga.internal ? ga.internal.users : null,
+    signups: signups && signups.ok ? signups.count : null,
+    signupsPrev: signups && signups.ok ? signups.countPrev : null,
+    primary,
     orders: rev && rev.ok ? rev.orders : null,
     days: range.days,
     today: range.today,
@@ -101,6 +115,8 @@ export async function loadDashboard(brand: BrandId, range: DateRange, skip: { yo
           usersDayTotal: ga && ga.ok ? Math.round(ga.real.activeUsers) : null,
           orders: demo ? demoRevenueHours(range) : revDays && !Array.isArray(revDays) && revDays.ok ? revDays.hours : null,
           ordersDayTotal: rev && rev.ok ? rev.orders : null,
+          signups: signups && signups.ok ? signups.hours : null,
+          signupsDayTotal: signups && signups.ok ? signups.hours.filter((h) => h.date === range.to).reduce((a, h) => a + h.value, 0) : null,
         })
       : buildCombo({
           range,
@@ -108,6 +124,7 @@ export async function loadDashboard(brand: BrandId, range: DateRange, skip: { yo
           ads: ads && ads.ok ? { currency: ads.currency, days: ads.days.map((d) => ({ date: d.date, spend: d.cost, clicks: d.clicks })) } : null,
           users: ga && ga.ok ? ga.daily : null,
           orders: Array.isArray(revDays) ? revDays : revDays && revDays.ok ? revDays.days : null,
+          signups: signups && signups.ok ? signups.days : null,
           events: allEvents(brand, [...(meta && meta.ok ? meta.series : []), ...(ads && ads.ok ? ads.series : [])], range),
         });
   const pending = statuses.filter((s) => !isOn(s.platform.id));
@@ -121,7 +138,7 @@ export async function loadDashboard(brand: BrandId, range: DateRange, skip: { yo
     statuses,
     pending,
     connectedCount: statuses.length - pending.length,
-    meta, yt, ga, rev, ads, vc,
+    meta, yt, ga, rev, ads, vc, signups, primary,
     combo, overview, effect, actions,
   };
 }

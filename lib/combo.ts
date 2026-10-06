@@ -4,8 +4,8 @@ import type { AdEvent } from "@/lib/events";
 import type { AdHour, CountHour } from "@/lib/hourly";
 import { fxRates, planCurrency } from "@/lib/fx";
 
-export type ComboDay = { date: string; h?: number; spend: number | null; users: number | null; clicks: number | null; orders: number | null };
-export type CompareRow = { key: "spend" | "clicks" | "users" | "orders"; label: string; cur: number; prev: number; won: boolean };
+export type ComboDay = { date: string; h?: number; spend: number | null; users: number | null; clicks: number | null; orders: number | null; signups: number | null };
+export type CompareRow = { key: "spend" | "clicks" | "users" | "orders" | "signups"; label: string; cur: number; prev: number; won: boolean };
 export type ComboCompare = { title: string; rows: CompareRow[] };
 export type ComboData = {
   currency: string | null; // 광고비 통화(합칠 수 없으면 null)
@@ -27,6 +27,7 @@ export function buildCombo(x: {
   ads: { currency: string; days: SpendDay[] } | null;
   users: { date: string; users: number }[] | null; // GA4 일별 실사용자(직전 기간부터)
   orders: { date: string; orders: number }[] | null; // 일별 결제 건수(직전 기간부터)
+  signups?: { date: string; signups: number }[] | null; // 일별 신규 가입(직전 기간부터). 연결 안 됐으면 null
   events: AdEvent[];
 }): ComboData {
   const { range } = x;
@@ -42,12 +43,14 @@ export function buildCombo(x: {
   const spendBy = sides.map((s) => by(s.days));
   const usersBy = by(x.users);
   const ordersBy = by(x.orders);
+  const signupsBy = by(x.signups ?? null);
   const day = (date: string): ComboDay => ({
     date,
     spend: spendOk ? spendBy.reduce((a, m, i) => a + (m.get(date)?.spend ?? 0) * mults[i], 0) : null,
     clicks: sides.length ? spendBy.reduce((a, m) => a + (m.get(date)?.clicks ?? 0), 0) : null,
     users: x.users ? usersBy.get(date)?.users ?? 0 : null,
     orders: x.orders ? ordersBy.get(date)?.orders ?? 0 : null,
+    signups: x.signups ? signupsBy.get(date)?.signups ?? 0 : null,
   });
   return {
     currency: spendOk ? plan.currency : null,
@@ -74,6 +77,8 @@ export function buildHourCombo(x: {
   usersDayTotal: number | null; // 시간별을 못 읽을 때 보여 줄 하루 합계(GA4 실사용자)
   orders: CountHour[] | null;
   ordersDayTotal: number | null;
+  signups?: CountHour[] | null; // 시간별 신규 가입
+  signupsDayTotal?: number | null;
 }): ComboData {
   const { range } = x;
   const last = range.today && range.nowHour !== null ? range.nowHour : 23;
@@ -92,11 +97,13 @@ export function buildHourCombo(x: {
   const mults = hourly.map((s) => plan.mult(s.currency) ?? 0);
   if (!x.users && x.usersDayTotal !== null) notes.push(`GA4·Vercel 시간별 데이터가 없어 사용자 선은 숨깁니다 — 하루 합계 ${x.usersDayTotal.toLocaleString("ko-KR")}명`);
   if (!x.orders && x.ordersDayTotal !== null) notes.push(`결제 시간별 데이터가 없어 마커는 숨깁니다 — 하루 합계 ${x.ordersDayTotal}건`);
+  if (!x.signups && x.signupsDayTotal != null) notes.push(`가입 시간별 데이터가 없어 마커는 숨깁니다 — 하루 합계 ${x.signupsDayTotal}명`);
 
   const idx = (rows: { date: string; hour: number }[] | null) => new Map((rows ?? []).map((r) => [`${r.date}|${r.hour}`, r]));
   const adBy = hourly.map((s) => ({ s, m: idx(s.hours) as Map<string, AdHour> }));
   const usersBy = idx(x.users?.rows ?? null) as Map<string, CountHour>;
   const ordersBy = idx(x.orders) as Map<string, CountHour>;
+  const signupsBy = idx(x.signups ?? null) as Map<string, CountHour>;
   const point = (date: string, h: number, live: boolean): ComboDay => ({
     date,
     h,
@@ -104,19 +111,21 @@ export function buildHourCombo(x: {
     clicks: live && adsOk ? adBy.reduce((a, { m }) => a + (m.get(`${date}|${h}`)?.clicks ?? 0), 0) : null,
     users: live && x.users ? usersBy.get(`${date}|${h}`)?.value ?? 0 : null,
     orders: live && x.orders ? ordersBy.get(`${date}|${h}`)?.value ?? 0 : null,
+    signups: live && x.signups ? signupsBy.get(`${date}|${h}`)?.value ?? 0 : null,
   });
   const hoursOf = (date: string, upTo: number) => Array.from({ length: 24 }, (_, h) => point(date, h, h <= upTo));
   const days = hoursOf(range.to, last);
   const prev = hoursOf(range.prev.to, 23);
 
   // 합계 비교: 오늘이면 어제 같은 시각까지, 어제면 하루 전체끼리.
-  const sum = (src: ComboDay[], k: "spend" | "clicks" | "users" | "orders", upTo: number) => src.filter((d) => (d.h ?? 0) <= upTo).reduce((a, d) => a + (d[k] ?? 0), 0);
-  const has = (k: "spend" | "clicks" | "users" | "orders") => days.some((d) => d[k] !== null);
+  const sum = (src: ComboDay[], k: "spend" | "clicks" | "users" | "orders" | "signups", upTo: number) => src.filter((d) => (d.h ?? 0) <= upTo).reduce((a, d) => a + (d[k] ?? 0), 0);
+  const has = (k: "spend" | "clicks" | "users" | "orders" | "signups") => days.some((d) => d[k] !== null);
   const defs: { key: CompareRow["key"]; label: string; won: boolean }[] = [
     { key: "spend", label: "광고비", won: true },
     { key: "clicks", label: "광고 클릭", won: false },
     { key: "users", label: `${x.users?.label ?? "실사용자"}(시간별 합)`, won: false },
     { key: "orders", label: "결제", won: false },
+    { key: "signups", label: "가입", won: false },
   ];
   const rows = defs.filter((d) => has(d.key)).map((d) => ({ ...d, cur: sum(days, d.key, last), prev: sum(prev, d.key, last) }));
   return {

@@ -21,6 +21,10 @@ export type Overview = {
   steps: FunnelStep[];
   costPerUser: number | null;
   costPerOrder: number | null;
+  signups: number | null; // 신규 가입(연결 안 됐으면 null)
+  signupsPrev: number | null; // 직전 같은 길이 기간 가입(오늘 보기·못 읽으면 null)
+  costPerSignup: number | null;
+  primary: "signups" | "orders"; // 이 브랜드의 핵심 전환 — 화면 KPI 순서·판정이 이걸 따른다
 };
 
 const sum = <T,>(xs: T[], f: (x: T) => number) => xs.reduce((a, x) => a + f(x), 0);
@@ -34,6 +38,9 @@ export function buildOverview(input: {
   orders: number | null; // 조회 기간 실제 결제 건수
   days: number; // 조회 기간 일수(광고 일별 행의 마지막 N일을 쓴다)
   today?: boolean; // 오늘 보기(하루가 안 끝남): 어제 전체와 견주지 않는다
+  signups?: number | null; // 신규 가입(Supabase, 개수만). 연결 안 됐으면 null
+  signupsPrev?: number | null;
+  primary?: "signups" | "orders"; // 핵심 전환(기본 orders)
 }): Overview {
   const lastN = <T,>(days: T[]) => days.slice(-input.days);
   const sources = [
@@ -63,12 +70,14 @@ export function buildOverview(input: {
     { key: "impressions", label: "광고 노출", note: spendNote, value: impressions },
     { key: "clicks", label: "광고 클릭", note: spendNote, value: clicks },
     { key: "users", label: "사이트 실사용자", note: `GA4 · 봇 의심 제외${input.internalUsers ? ` · 본인 제외 ${input.internalUsers.toLocaleString("ko-KR")}명` : ""} · 광고 외 유입 포함`, value: input.realUsers },
+    ...(input.signups != null ? [{ key: "signups", label: "신규 가입", note: "Supabase 가입 수(개수만)", value: input.signups }] : []),
     { key: "orders", label: "실제 결제", note: "Polar / Supabase 결제 완료", value: input.orders },
   ];
   // 1일 보기는 표본이 작아 '낭비·봇·결제 0건' 같은 단정을 하지 않는다: 단계 해석은 참고(info)로 낮춘다.
   const tone = (m: Meaning | null): Meaning | null => (m && input.days <= 1 && (m.level === "bad" || m.level === "warn") ? { ...m, level: "info", text: `표본이 작아 참고만: ${m.text}` } : m);
   const steps = raw.map((s, i) => {
-    const prev = raw[i - 1]?.value;
+    // 가입·결제는 둘 다 '사이트 실사용자' 대비로 본다(가입 → 결제 순서로 늘어놓아도 결제율이 가입 대비로 바뀌지 않게).
+    const prev = (s.key === "signups" || s.key === "orders" ? raw.find((x) => x.key === "users") : raw[i - 1])?.value;
     const rateFromPrev = i > 0 && prev && s.value !== null ? s.value / prev : null;
     return { ...s, rateFromPrev, meaning: tone(meaningFor(s.key, rateFromPrev, s.value, prev ?? null)) };
   });
@@ -95,7 +104,7 @@ export function buildOverview(input: {
             detail: "하루는 표본이 작아 '봇 의심·낭비 의심·결제 없음' 같은 결론을 내리지 않습니다. 아래 시간별 그래프는 어떤 시간대에 광고비·클릭·사용자가 움직였는지 보는 용도입니다.",
             action: "추세 판단은 7일 이상으로 보고, 오늘은 새로 켠 캠페인이 제대로 돌기 시작했는지(노출·클릭이 붙는지)만 확인한다.",
           }
-        : verdictFor({ impressions, clicks, users: input.realUsers, orders: input.orders, bots: input.botUsers ?? null, spend, currency: plan.currency ?? "KRW" }),
+        : verdictFor({ impressions, clicks, users: input.realUsers, orders: input.orders, bots: input.botUsers ?? null, spend, currency: plan.currency ?? "KRW", signups: input.signups ?? null, primary: input.primary ?? "orders" }),
     spend,
     currency: plan.currency ?? "KRW",
     spendNote,
@@ -103,6 +112,10 @@ export function buildOverview(input: {
     steps,
     costPerUser: spend !== null && input.realUsers ? spend / input.realUsers : null,
     costPerOrder: spend !== null && input.orders ? spend / input.orders : null,
+    signups: input.signups ?? null,
+    signupsPrev: input.today ? null : input.signupsPrev ?? null,
+    costPerSignup: spend !== null && input.signups ? spend / input.signups : null,
+    primary: input.primary ?? "orders",
   };
 }
 
@@ -116,6 +129,12 @@ const MIN_USERS_FOR_CVR = 100; // 이보다 적으면 결제 0건도 우연일 �
 const p1 = (r: number) => `${(r * 100).toFixed(r < 0.01 ? 2 : 1)}%`;
 
 function meaningFor(key: string, rate: number | null, value: number | null, prev: number | null): Meaning | null {
+  if (key === "signups" && value !== null) {
+    const users = prev ?? 0;
+    if (value === 0 && users < MIN_USERS_FOR_CVR) return { level: "warn", rateName: "방문 대비 가입", text: `방문 ${users}명으로는 가입 0명이 이상하지 않다. 가입보다 진짜 방문을 먼저 늘려야 한다.` };
+    if (value === 0) return { level: "bad", rateName: "방문 대비 가입", text: `사람 ${users.toLocaleString("ko-KR")}명이 왔는데 가입 0명 — 가입 버튼·가입 절차(소셜 로그인·이메일 확인)를 봐야 한다.` };
+    return { level: "info", rateName: "방문 대비 가입", text: "가입한 사람 수는 개수만 센다(광고로 온 사람인지는 가르지 않음)." };
+  }
   if (key === "clicks" && rate !== null) {
     if (rate > CTR_HIGH) return { level: "warn", rateName: "클릭률", text: `보통(약 1%)보다 훨씬 높음. 좋은 신호가 아니라 앱 속 배너·실수 클릭일 때 이렇게 나온다 — 다음 단계(사이트 도착)와 같이 봐야 한다.` };
     if (rate < CTR_LOW) return { level: "warn", rateName: "클릭률", text: "낮음. 광고가 눈길을 못 끈다 — 소재(첫 화면)나 타깃을 바꿔 볼 단계." };
@@ -136,7 +155,7 @@ function meaningFor(key: string, rate: number | null, value: number | null, prev
   return null;
 }
 
-function verdictFor(x: { impressions: number | null; clicks: number | null; users: number | null; orders: number | null; bots: number | null; spend: number | null; currency: string }): Verdict | null {
+function verdictFor(x: { impressions: number | null; clicks: number | null; users: number | null; orders: number | null; bots: number | null; spend: number | null; currency: string; signups: number | null; primary: "signups" | "orders" }): Verdict | null {
   const { impressions, clicks, users, orders, bots } = x;
   const k = (v: number) => v.toLocaleString("ko-KR");
   const won = (v: number) => (x.currency === "KRW" ? `${k(Math.round(v))}원` : `${v.toFixed(2)} ${x.currency}`);
@@ -160,6 +179,19 @@ function verdictFor(x: { impressions: number | null; clicks: number | null; user
       adSide: true,
     };
   }
+  // 가입이 핵심 전환인 브랜드(무료 가입형): 결제 대신 가입으로 흐름을 본다.
+  if (x.primary === "signups" && x.signups !== null) {
+    if (x.signups === 0 && users !== null && users >= MIN_USERS_FOR_CVR) {
+      return { level: "bad", headline: "사람은 오는데 가입이 없음", detail: `실사용자 ${k(users)}명, 가입 0명. 트래픽 문제가 아니라 사이트 안(가입 버튼·가입 절차) 문제다.`, action: "가입 버튼까지 가는 비율을 GA4 이벤트로 확인하고, 가입 절차(소셜 로그인·이메일 확인)를 직접 해 본다." };
+    }
+    if (x.signups === 0) {
+      return { level: "warn", headline: "가입을 판단하기엔 방문이 너무 적음", detail: `실사용자 ${users === null ? "-" : k(users)}명. 지금 가입 0명은 사이트 탓이라고 보기 어렵다.`, action: "광고비를 늘리기 전에 사람이 실제로 오는 지면·국가로 좁혀 '실사용자 1명당 광고비'부터 낮춘다." };
+    }
+    if (x.spend !== null) {
+      return { level: "good", headline: "광고부터 가입까지 흐름이 이어지고 있음", detail: `신규 가입 ${k(x.signups)}명, 가입 1명당 광고비 ${won(x.spend / x.signups)}. 가입은 광고 밖 유입 가입도 함께 센 최소치다.`, action: "가입 1명당 광고비를 기간별로 비교해 오르는 캠페인부터 줄인다." };
+    }
+  }
+  if (x.primary === "signups" && x.signups !== null) return null; // 가입이 핵심이면 결제 0건으로 판정하지 않는다
   if (orders === 0 && users !== null && users >= MIN_USERS_FOR_CVR) {
     return {
       level: "bad",

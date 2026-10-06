@@ -299,7 +299,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Que
       badge: urgent ? { text: `긴급 ${urgent}`, short: String(urgent), level: "bad" } : check ? { text: `확인 ${check}`, short: String(check), level: "warn" } : null,
       node: (
         <>
-          <OverviewPanel o={overview} range={range} costPerEngaged={effectCostPerEngaged(effect)} combo={d.combo} brandLabel={d.brandLabel} />
+          <OverviewPanel o={overview} range={range} costPerEngaged={effectCostPerEngaged(effect)} combo={d.combo} brandLabel={d.brandLabel} signups={d.signups} />
           <ActionsPanel items={actions} />
         </>
       ),

@@ -190,6 +190,8 @@ body:has(dialog[open]) { overflow: hidden; } /* 시트가 열려 있으면 뒤 �
 .hero-num { margin: 0; font-size: 52px; font-weight: 700; line-height: 1.05; letter-spacing: -0.02em; }
 .kpis-3 { margin-top: 0; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .kpis-3 .stat-value { font-size: 18px; }
+.kpis-4 { margin-top: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.kpis-4 .stat-value { font-size: 18px; }
 .share { display: flex; gap: 2px; height: 12px; margin-top: 10px; }
 .share-seg { min-width: 4px; }
 .share-seg:first-child { border-radius: 4px 0 0 4px; } .share-seg:last-child { border-radius: 0 4px 4px 0; } .share-seg:only-child { border-radius: 4px; }
@@ -322,6 +324,11 @@ body:has(dialog[open]) { overflow: hidden; } /* 시트가 열려 있으면 뒤 �
   .kpis-3 .stat-label { font-size: 11px; }
   .kpis-3 .stat-value { font-size: 15px; }
   .kpis-3 .delta { font-size: 10px; }
+  .kpis-4 { gap: 6px; }
+  .kpis-4 .stat { padding: 8px; }
+  .kpis-4 .stat-label { font-size: 11px; }
+  .kpis-4 .stat-value { font-size: 15px; }
+  .kpis-4 .delta { font-size: 10px; }
   .fn-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: 6px; }
   .fn-track { grid-column: 1 / -1; grid-row: 2; }
   .fn-conn { grid-template-columns: minmax(0, 1fr); }

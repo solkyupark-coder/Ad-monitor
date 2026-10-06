@@ -1,12 +1,12 @@
 "use client";
-// 일별 추이 한 장에 겹쳐 그리기: 광고비(막대, 왼쪽 축) + 실사용자·클릭(선, 오른쪽 축) + 결제(마커 줄), 직전 기간은 흐린 점선.
+// 일별 추이 한 장에 겹쳐 그리기: 광고비(막대, 왼쪽 축) + 실사용자·클릭(선, 오른쪽 축) + 결제·가입(마커 줄), 직전 기간은 흐린 점선.
 // 범례를 눌러 지표를 켜고 끄고, 마우스(또는 터치·←→ 키)로 그날 수치를 본다. 광고를 켜고 끈 날짜는 세로선 + 라벨.
 // 두 축을 쓰는 만큼 오해를 줄이려고: 축 제목에 어느 지표의 축인지 적고, 막대는 왼쪽·선은 오른쪽으로만 쓰며, 정확한 값은 툴팁과 '표로 보기'에 둔다.
 import { useEffect, useRef, useState } from "react";
 import { fmtCompact, fmtDate, fmtValue } from "@/lib/format";
 import type { ComboData, ComboDay } from "@/lib/combo";
 
-type Key = "spend" | "users" | "clicks" | "orders" | "prev";
+type Key = "spend" | "users" | "clicks" | "orders" | "signups" | "prev";
 
 const L = 48;
 const R = 46;
@@ -35,8 +35,9 @@ export function ComboChart({ combo, title }: { combo: ComboData; title: string }
     users: days.some((d) => d.users !== null),
     clicks: days.some((d) => d.clicks !== null),
     orders: days.some((d) => d.orders !== null),
+    signups: days.some((d) => d.signups !== null),
   };
-  const [on, setOn] = useState<Record<Key, boolean>>({ spend: true, users: true, clicks: true, orders: true, prev: true });
+  const [on, setOn] = useState<Record<Key, boolean>>({ spend: true, users: true, clicks: true, orders: true, signups: true, prev: true });
   const [hover, setHover] = useState<number | null>(null);
   const [w, setW] = useState(480);
   const box = useRef<HTMLDivElement>(null);
@@ -76,8 +77,9 @@ export function ComboChart({ combo, title }: { combo: ComboData; title: string }
     lanes.push({ e, x, lane, anchor, wpx });
   }
   const laneCount = lanes.length ? Math.max(...lanes.map((l) => l.lane)) + 1 : 0;
-  const stripOn = show("orders");
-  const T = 12 + laneCount * LANE + (stripOn ? STRIP : 0);
+  // 결제(◆)·가입(●)은 각자 한 줄의 마커 줄로 그래프 위에 둔다.
+  const strips = (["orders", "signups"] as const).filter(show);
+  const T = 12 + laneCount * LANE + strips.length * STRIP;
   const H = compact ? 270 : 310;
   const yb = H - B; // 기준선
   const ph = yb - T - 4;
@@ -123,17 +125,19 @@ export function ComboChart({ combo, title }: { combo: ComboData; title: string }
   const pd = showPrev ? prev[active] : null;
   const dayEvents = events.filter((e) => e.date === d.date);
   const tipRight = cx(active) < w / 2;
-  const rows: { k: string; label: string; v: string; pv: string | null; kind: "bar" | "line1" | "line2" | "mark" }[] = [];
+  const rows: { k: string; label: string; v: string; pv: string | null; kind: "bar" | "line1" | "line2" | "mark" | "mark2" }[] = [];
   if (show("spend")) rows.push({ k: "spend", label: "광고비", v: money(d.spend), pv: pd ? money(pd.spend) : null, kind: "bar" });
   if (show("users")) rows.push({ k: "users", label: usersName, v: `${cnt(d.users)}명`, pv: pd ? `${cnt(pd.users)}명` : null, kind: "line1" });
   if (show("clicks")) rows.push({ k: "clicks", label: "광고 클릭", v: `${cnt(d.clicks)}번`, pv: pd ? `${cnt(pd.clicks)}번` : null, kind: "line2" });
-  if (stripOn) rows.push({ k: "orders", label: "결제", v: `${cnt(d.orders)}건`, pv: pd ? `${cnt(pd.orders)}건` : null, kind: "mark" });
+  if (show("orders")) rows.push({ k: "orders", label: "결제", v: `${cnt(d.orders)}건`, pv: pd ? `${cnt(pd.orders)}건` : null, kind: "mark" });
+  if (show("signups")) rows.push({ k: "signups", label: "가입", v: `${cnt(d.signups)}명`, pv: pd ? `${cnt(pd.signups)}명` : null, kind: "mark2" });
 
-  const legend: { k: Key; label: string; kind: "bar" | "line1" | "line2" | "mark" | "dash"; off?: string }[] = [
+  const legend: { k: Key; label: string; kind: "bar" | "line1" | "line2" | "mark" | "mark2" | "dash"; off?: string }[] = [
     { k: "spend", label: `광고비${currency ? ` (${currency === "KRW" ? "원" : currency})` : ""}`, kind: "bar", off: has.spend ? undefined : combo.notes[0] ?? "광고 소스가 연결되지 않았습니다" },
     { k: "users", label: usersName, kind: "line1", off: has.users ? undefined : "GA4가 연결되지 않았거나 일별 값을 읽지 못했습니다" },
     { k: "clicks", label: "광고 클릭", kind: "line2", off: has.clicks ? undefined : "광고 소스가 연결되지 않았습니다" },
     { k: "orders", label: "결제", kind: "mark", off: has.orders ? undefined : "결제(Polar·Supabase)가 연결되지 않았습니다" },
+    { k: "signups", label: "가입", kind: "mark2", off: has.signups ? undefined : "가입 집계(Supabase 가입 뷰)가 연결되지 않았습니다 — README 참고" },
     { k: "prev", label: hourly ? "전날" : "직전 기간", kind: "dash", off: prev.length === n ? undefined : "비교할 이전 기간 데이터가 없습니다" },
   ];
   const KeyIcon = ({ kind }: { kind: string }) => (
@@ -142,6 +146,7 @@ export function ComboChart({ combo, title }: { combo: ComboData; title: string }
       {kind === "line1" && <line x1="1" x2="21" y1="6" y2="6" stroke="var(--s2)" strokeWidth="2.5" strokeLinecap="round" />}
       {kind === "line2" && <line x1="1" x2="21" y1="6" y2="6" stroke="var(--s3)" strokeWidth="2.5" strokeLinecap="round" />}
       {kind === "mark" && <path d="M11 1l5 5-5 5-5-5z" fill="var(--s4)" />}
+      {kind === "mark2" && <circle cx="11" cy="6" r="4.5" fill="var(--s4)" />}
       {kind === "dash" && <line x1="1" x2="21" y1="6" y2="6" stroke="var(--ink2)" strokeWidth="1.5" strokeDasharray="4 3" opacity=".7" />}
     </svg>
   );
@@ -204,7 +209,7 @@ export function ComboChart({ combo, title }: { combo: ComboData; title: string }
         <svg
           viewBox={`0 0 ${w} ${H}`}
           role="img"
-          aria-label={hourly ? `${title}: 시간별 광고비·사용자·클릭·결제 추이` : `${title}: 최근 ${n}일 광고비·실사용자·클릭·결제 일별 추이`}
+          aria-label={hourly ? `${title}: 시간별 광고비·사용자·클릭·결제·가입 추이` : `${title}: 최근 ${n}일 광고비·실사용자·클릭·결제·가입 일별 추이`}
           tabIndex={0}
           onPointerMove={(e) => locate(e.clientX, e.currentTarget)}
           onPointerLeave={() => setHover(null)}
@@ -238,18 +243,22 @@ export function ComboChart({ combo, title }: { combo: ComboData; title: string }
           {show("users") && <path d={path(days, "users", yr)} fill="none" stroke="var(--s2)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />}
           {show("clicks") && <path d={path(days, "clicks", yr)} fill="none" stroke="var(--s3)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />}
 
-          {/* 결제 마커 줄 */}
-          {stripOn && (
-            <g>
-              {days.map((dd, i) => (dd.orders ?? 0) > 0 && (
-                <g key={dd.date}>
-                  <path d={`M${cx(i)},${T - STRIP + 2}l6,6-6,6-6-6z`} fill="var(--s4)" stroke="var(--surface)" strokeWidth="2" paintOrder="stroke" />
-                  {(dd.orders ?? 0) > 1 && <text x={cx(i)} y={T - STRIP + 11.5} textAnchor="middle" className="mark-n">{dd.orders}</text>}
-                </g>
-              ))}
-              {showPrev && prev.map((pp, i) => (pp.orders ?? 0) > 0 && <circle key={pp.date} cx={cx(i)} cy={T - 5} r="3.2" fill="none" stroke="var(--s4)" strokeWidth="1.5" opacity=".55" />)}
-            </g>
-          )}
+          {/* 결제(◆)·가입(●) 마커 줄 */}
+          {strips.map((k, j) => {
+            const top = T - (strips.length - j) * STRIP; // 이 줄의 위쪽
+            const cy = top + 8;
+            return (
+              <g key={k}>
+                {days.map((dd, i) => (dd[k] ?? 0) > 0 && (
+                  <g key={dd.date + (dd.h ?? "")}>
+                    {k === "orders" ? <path d={`M${cx(i)},${cy - 6}l6,6-6,6-6-6z`} fill="var(--s4)" stroke="var(--surface)" strokeWidth="2" paintOrder="stroke" /> : <circle cx={cx(i)} cy={cy} r="6" fill="var(--s4)" stroke="var(--surface)" strokeWidth="2" paintOrder="stroke" />}
+                    {(dd[k] ?? 0) > 1 && <text x={cx(i)} y={cy + 3.5} textAnchor="middle" className="mark-n">{dd[k]}</text>}
+                  </g>
+                ))}
+                {showPrev && prev.map((pp, i) => (pp[k] ?? 0) > 0 && <circle key={pp.date + (pp.h ?? "")} cx={cx(i)} cy={top + STRIP - 5} r="3.2" fill="none" stroke="var(--s4)" strokeWidth="1.5" opacity=".55" />)}
+              </g>
+            );
+          })}
 
           {/* 광고를 켜고 끈 날짜: 세로선 + 라벨 */}
           {lanes.map(({ e, x, lane, anchor }) => (
@@ -294,7 +303,8 @@ export function ComboChart({ combo, title }: { combo: ComboData; title: string }
                 {has.users && <th>실사용자</th>}
                 {has.clicks && <th>클릭</th>}
                 {has.orders && <th>결제</th>}
-                {prev.length === n && <th>직전 기간(광고비 · 사용자 · 클릭 · 결제)</th>}
+                {has.signups && <th>가입</th>}
+                {prev.length === n && <th>직전 기간(광고비 · 사용자 · 클릭 · 결제 · 가입)</th>}
               </tr>
             </thead>
             <tbody>
@@ -305,7 +315,8 @@ export function ComboChart({ combo, title }: { combo: ComboData; title: string }
                   {has.users && <td>{cnt(dd.users)}</td>}
                   {has.clicks && <td>{cnt(dd.clicks)}</td>}
                   {has.orders && <td>{cnt(dd.orders)}</td>}
-                  {prev.length === n && <td>{hourly ? `${prev[i].h}시` : fmtDate(prev[i].date)}: {[has.spend ? money(prev[i].spend) : null, has.users ? cnt(prev[i].users) : null, has.clicks ? cnt(prev[i].clicks) : null, has.orders ? cnt(prev[i].orders) : null].filter((x) => x !== null).join(" · ")}</td>}
+                  {has.signups && <td>{cnt(dd.signups)}</td>}
+                  {prev.length === n && <td>{hourly ? `${prev[i].h}시` : fmtDate(prev[i].date)}: {[has.spend ? money(prev[i].spend) : null, has.users ? cnt(prev[i].users) : null, has.clicks ? cnt(prev[i].clicks) : null, has.orders ? cnt(prev[i].orders) : null, has.signups ? cnt(prev[i].signups) : null].filter((x) => x !== null).join(" · ")}</td>}
                 </tr>
               ))}
             </tbody>

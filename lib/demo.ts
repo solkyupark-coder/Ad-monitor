@@ -33,13 +33,13 @@ export function demoMeta(r: DateRange): MetaSummary {
     currency: "KRW",
     days,
     campaigns: [
-      { name: "[데모] 신규 고객 · 트래픽", spend: 21000, impressions: 8200, clicks: 410 },
-      { name: "[데모] 리타겟팅 · 전환", spend: 11800, impressions: 5100, clicks: 260 },
-      { name: "[데모] 브랜드 인지도", spend: 6300, impressions: 3200, clicks: 130 },
-      { name: "[데모] 시즌 프로모션", spend: 1980, impressions: 572, clicks: 29 },
+      { name: "[데모] 신규 고객 · 트래픽", spend: 21000, impressions: 8200, clicks: 410, status: "ACTIVE", state: "active" as const },
+      { name: "[데모] 리타겟팅 · 전환", spend: 11800, impressions: 5100, clicks: 260, status: "ACTIVE", state: "active" as const },
+      { name: "[데모] 브랜드 인지도", spend: 6300, impressions: 3200, clicks: 130, status: "PAUSED", state: "paused" as const },
+      { name: "[데모] 시즌 프로모션", spend: 1980, impressions: 572, clicks: 29, status: "DELETED", state: "removed" as const },
     ].map((c): MetaCampaign => scaleCampaign(c, r.days / 7)).concat([
-      { ...scaleCampaign({ name: "Instagram post: [데모] 신작 공개", spend: 8800, impressions: 3400, clicks: 52 }, r.days / 7), account: "데모 인스타그램 프로모션", status: "ACTIVE", promo: true },
-      { ...scaleCampaign({ name: "[데모] topoGenesis — 사이트 소개", spend: 5400, impressions: 2100, clicks: 38 }, r.days / 7), account: "데모 하우스 광고 계정", status: "ACTIVE", paidBy: "Houscaper 계정에서 결제됨" },
+      { ...scaleCampaign({ name: "Instagram post: [데모] 신작 공개", spend: 8800, impressions: 3400, clicks: 52 }, r.days / 7), account: "데모 인스타그램 프로모션", status: "ACTIVE", state: "active" as const, promo: true },
+      { ...scaleCampaign({ name: "[데모] topoGenesis — 사이트 소개", spend: 5400, impressions: 2100, clicks: 38 }, r.days / 7), account: "데모 하우스 광고 계정", status: "CAMPAIGN_PAUSED", state: "paused" as const, paidBy: "Houscaper 계정에서 결제됨" },
     ]),
     accounts: [
       { id: "act_1000000000001", name: "데모 광고 계정", role: "main", currency: "KRW", spend: 35594, campaigns: 4, included: true, ok: true },
@@ -138,9 +138,9 @@ export function demoAds(r: DateRange): GoogleAdsSummary {
     moved: [],
     days,
     campaigns: [
-      { name: "[데모] 검색 · 브랜드", cost: 38000, clicks: 96, impressions: 2100 },
-      { name: "[데모] 디스플레이 · 리마케팅", cost: 17500, clicks: 41, impressions: 2600 },
-      { name: "[데모] 성과 최대화", cost: 6900, clicks: 19, impressions: 480 },
+      { name: "[데모] 검색 · 브랜드", cost: 38000, clicks: 96, impressions: 2100, state: "active" as const },
+      { name: "[데모] 디스플레이 · 리마케팅", cost: 17500, clicks: 41, impressions: 2600, state: "paused" as const },
+      { name: "[데모] 성과 최대화", cost: 6900, clicks: 19, impressions: 480, state: "active" as const },
     ].map((c) => ({ ...c, cost: Math.round((c.cost * r.days) / 7), clicks: Math.round((c.clicks * r.days) / 7), impressions: Math.round((c.impressions * r.days) / 7) })),
   };
 }

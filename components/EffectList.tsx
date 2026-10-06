@@ -4,6 +4,8 @@ import { useState } from "react";
 import { fmtValue } from "@/lib/format";
 import { VERDICT_LABEL, type EffectRow, type Verdict } from "@/lib/effect";
 import { LevelIcon } from "@/components/icons";
+import { StateBadge } from "@/components/StateBadge";
+import { isStopped } from "@/lib/campaign-state";
 
 const pct = (r: number | null) => (r === null ? "-" : `${(r * 100).toFixed(1)}%`);
 const FILTERS: (Verdict | "all")[] = ["all", "good", "warn", "bad", "hold"];
@@ -28,16 +30,19 @@ export function EffectList({ rows }: { rows: EffectRow[] }) {
       ) : (
         <ul className="fx-rows">
           {shown.map((r) => (
-            <li key={`${r.channel}-${r.name}`} className="fx-row">
+            <li key={`${r.channel}-${r.name}`} className={isStopped(r.state) ? "fx-row off" : "fx-row"}>
               <div className="fx-top">
                 <span className="fx-name" title={r.name}>
                   <span className={`swatch ${r.channel === "meta" ? "c1" : "c2"}`} aria-hidden="true" />
                   <span className="fx-name-t">{r.name}</span>
                   <span className="fine-inline">{r.channel === "meta" ? "메타" : "구글"}</span>
                 </span>
-                <span className={`vchip ${r.verdict}`}>
-                  <LevelIcon level={r.verdict} size={11} />
-                  {VERDICT_LABEL[r.verdict]}
+                <span className="tags">
+                  <StateBadge state={r.state} />
+                  <span className={`vchip ${r.verdict}`}>
+                    <LevelIcon level={r.verdict} size={11} />
+                    {VERDICT_LABEL[r.verdict]}
+                  </span>
                 </span>
               </div>
               <div className="fx-metrics">
@@ -47,6 +52,7 @@ export function EffectList({ rows }: { rows: EffectRow[] }) {
                 <span><i>참여율</i>{pct(r.engagementRate)}</span>
                 <span><i>참여 1회당</i>{money(r.costPerEngaged, r.currency)}</span>
               </div>
+              {r.paidBy && <p className="fine">{r.paidBy}</p>}
               <p className="fx-why">{r.why}</p>
             </li>
           ))}

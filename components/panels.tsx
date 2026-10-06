@@ -7,6 +7,8 @@ import { adsEngagement, byCountry, compareRevenue, findGoogleCpc, LOW_ENGAGEMENT
 import { fmtCompact, fmtValue } from "@/lib/format";
 import { TrendChart } from "@/components/TrendChart";
 import { BarList, Delta, Stat } from "@/components/ui";
+import { StateBadge } from "@/components/StateBadge";
+import { isStopped } from "@/lib/campaign-state";
 
 const pct = (r: number) => `${(r * 100).toFixed(1)}%`;
 const sec = (s: number) => (s < 10 ? `${s.toFixed(1)}초` : s < 60 ? `${Math.round(s)}초` : `${Math.floor(s / 60)}분 ${Math.round(s % 60)}초`);
@@ -365,14 +367,15 @@ export function AdsPanel({ a, ga, range }: { a: GoogleAdsSummary; ga: Ga4Summary
               </thead>
               <tbody>
                 {topCampaigns.map((x) => (
-                  <tr key={x.name}>
+                  <tr key={x.name} className={isStopped(x.state) ? "off" : undefined}>
                     <td className="name" title={x.name}>
                       {x.name}
-                      {x.paidBy && (
+                      {(x.state && x.state !== "unknown") || x.paidBy ? (
                         <span className="tags">
-                          <span className="vchip warn" title="이 광고비는 다른 브랜드의 광고 계정에서 결제됐습니다">{x.paidBy}</span>
+                          <StateBadge state={x.state} />
+                          {x.paidBy && <span className="vchip warn" title="이 광고비는 다른 브랜드의 광고 계정에서 결제됐습니다">{x.paidBy}</span>}
                         </span>
-                      )}
+                      ) : null}
                     </td>
                     <td>
                       <span className="inline-bar">

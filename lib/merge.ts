@@ -35,7 +35,7 @@ export function mergeMetaMoved(view: BrandId, own: MetaSummary | null, others: (
   if (baseOk && !keepBase) notes.push(`이 브랜드 자체 광고 계정(${baseOk.currency})은 통화가 달라 합계에 넣지 않았습니다.`);
   notes.push(`다른 브랜드 계정에서 결제된 이 브랜드 광고 ${use.length}개를 합쳤습니다.`);
   if (skipped.length) notes.push(`통화가 달라(${currency}) 합치지 못한 캠페인 ${skipped.length}개: ${skipped.map((m) => `${m.name}(${m.currency})`).join(", ")}`);
-  const add: MetaCampaign[] = use.map((m) => ({ name: m.name, spend: m.spend, impressions: m.impressions, clicks: m.clicks, account: m.account, status: m.status, promo: true, paidBy: paidByLabel(m.from) }));
+  const add: MetaCampaign[] = use.map((m) => ({ name: m.name, spend: m.spend, impressions: m.impressions, clicks: m.clicks, account: m.account, status: m.status, state: m.state, promo: true, paidBy: paidByLabel(m.from) }));
   const campaigns = [...(keepBase ? baseOk.campaigns : []), ...add].sort((a, b) => b.spend - a.spend);
   return {
     ok: true,
@@ -62,7 +62,7 @@ export function mergeAdsMoved(view: BrandId, own: GoogleAdsSummary | null, other
   if (baseOk && !keepBase) notes.push(`이 브랜드 자체 구글 광고 계정(${baseOk.currency})은 통화가 달라 합계에 넣지 않았습니다.`);
   notes.push(`다른 브랜드 계정에서 결제된 이 브랜드 광고 ${use.length}개를 합쳤습니다.`);
   if (skipped.length) notes.push(`통화가 달라(${currency}) 합치지 못한 캠페인 ${skipped.length}개: ${skipped.map((m) => `${m.name}(${m.currency})`).join(", ")}`);
-  const add: AdsCampaign[] = use.map((m) => ({ name: m.name, cost: m.spend, impressions: m.impressions, clicks: m.clicks, paidBy: paidByLabel(m.from) }));
+  const add: AdsCampaign[] = use.map((m) => ({ name: m.name, cost: m.spend, impressions: m.impressions, clicks: m.clicks, state: m.state, paidBy: paidByLabel(m.from) }));
   const days: AdsDay[] = addDays(baseDays, use.map((m) => m.days)).map((d) => ({ date: d.date, cost: d.spend, impressions: d.impressions, clicks: d.clicks }));
   return {
     ok: true,

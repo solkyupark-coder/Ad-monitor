@@ -5,7 +5,7 @@ type SpendDay = Day & { spend?: number; cost?: number };
 export type Level = "good" | "warn" | "bad" | "info";
 export type Meaning = { level: Level; rateName: string; text: string };
 export type FunnelStep = { key: string; label: string; note: string; value: number | null; rateFromPrev: number | null; meaning: Meaning | null };
-export type Verdict = { level: Level; headline: string; detail: string; action: string };
+export type Verdict = { level: Level; headline: string; detail: string; action: string; adSide?: boolean }; // adSide: 행동 제안이 광고 설정(지면·예산)에 관한 것 — 광고가 이미 다 꺼져 있으면 과거 기록으로 낮춘다
 export type DailyPoint = { date: string; spend: number | null; clicks: number; impressions: number };
 export type ChannelSpend = { name: string; spend: number };
 export type Overview = {
@@ -128,6 +128,7 @@ function verdictFor(x: { impressions: number | null; clicks: number | null; user
       headline: `사이트 방문의 ${Math.round(share * 100)}%가 봇 의심`,
       detail: `GA4에 찍힌 사용자 ${k(bots + users)}명 중 실제 사람으로 보이는 건 ${k(users)}명뿐이다. 광고비가 사람이 아닌 트래픽에 쓰이고 있을 가능성이 크다.`,
       action: "메타는 오디언스 네트워크 지면을, 구글은 검색 파트너·디스플레이 확장을 끄고 국가를 판매 국가로 좁힌다.",
+      adSide: true,
     };
   }
   if (clicks && users !== null && users / clicks < ARRIVE_LOW) {
@@ -137,6 +138,7 @@ function verdictFor(x: { impressions: number | null; clicks: number | null; user
       headline: "광고 클릭이 사람 방문으로 이어지지 않음",
       detail: `클릭 ${k(clicks)}번에 실사용자 ${k(users)}명(${p1(users / clicks)}).${ctr !== null && ctr > CTR_HIGH ? ` 클릭률 ${p1(ctr)}도 비정상적으로 높아 실수·봇 클릭일 가능성이 크다.` : " 페이지가 느리거나 클릭 직후 이탈한다."}`,
       action: "지면을 피드·릴스로 한정하고, 최적화 목표를 '링크 클릭'이 아닌 '랜딩 페이지 조회'나 '리드'로 바꾼다.",
+      adSide: true,
     };
   }
   if (orders === 0 && users !== null && users >= MIN_USERS_FOR_CVR) {

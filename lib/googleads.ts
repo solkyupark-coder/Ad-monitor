@@ -5,16 +5,17 @@ import { googleToken, logFailure, tokenFailureReason } from "@/lib/google";
 import { BRANDS, type BrandId } from "@/lib/platforms";
 import { eachDay, type DateRange } from "@/lib/range";
 import { decide, hostsIn, loadRules, subtractDays, type DayRow, type MovedAd } from "@/lib/attribution";
+import { googleState, type CampaignState } from "@/lib/campaign-state";
 
 export type AdsDay = { date: string; clicks: number; cost: number; impressions: number };
-export type AdsCampaign = { name: string; clicks: number; cost: number; impressions: number; paidBy?: string }; // paidBy: 다른 브랜드 계정에서 결제돼 옮겨 온 캠페인 표시
+export type AdsCampaign = { name: string; clicks: number; cost: number; impressions: number; paidBy?: string; state?: CampaignState }; // state: 집행 중 / 중지됨 / 삭제됨(campaign.status 기준) // paidBy: 다른 브랜드 계정에서 결제돼 옮겨 온 캠페인 표시
 export type GoogleAdsSummary =
   | { ok: true; accountName: string; currency: string; days: AdsDay[]; campaigns: AdsCampaign[]; notes: string[]; moved: MovedAd[] }
   | { ok: false; reason: string };
 
 type AdsRow = {
   customer?: { descriptiveName?: string; currencyCode?: string };
-  campaign?: { id?: string; name?: string };
+  campaign?: { id?: string; name?: string; status?: string };
   adGroupAd?: { ad?: { finalUrls?: string[] } };
   segments?: { date?: string };
   metrics?: { clicks?: string; costMicros?: string; impressions?: string };
@@ -75,7 +76,7 @@ export async function googleAdsSummary(brand: BrandId, range: DateRange): Promis
     const infoQ = "SELECT customer.descriptive_name, customer.currency_code FROM customer LIMIT 1";
     // 날짜는 lib/range 가 형식을 검증한 YYYY-MM-DD 만 들어온다.
     const dayQ = `SELECT segments.date, metrics.clicks, metrics.cost_micros, metrics.impressions FROM customer WHERE segments.date BETWEEN '${range.prev.from}' AND '${range.to}' ORDER BY segments.date`;
-    const campQ = `SELECT campaign.id, campaign.name, metrics.clicks, metrics.cost_micros, metrics.impressions FROM campaign WHERE segments.date BETWEEN '${range.from}' AND '${range.to}' AND metrics.impressions > 0 ORDER BY metrics.cost_micros DESC LIMIT 50`;
+    const campQ = `SELECT campaign.id, campaign.name, campaign.status, metrics.clicks, metrics.cost_micros, metrics.impressions FROM campaign WHERE segments.date BETWEEN '${range.from}' AND '${range.to}' AND metrics.impressions > 0 ORDER BY metrics.cost_micros DESC LIMIT 50`;
     const run = (loginId: string) => {
       const search = searchWith(loginId);
       return Promise.all([search(infoQ), search(dayQ), search(campQ)]);
@@ -123,7 +124,7 @@ export async function googleAdsSummary(brand: BrandId, range: DateRange): Promis
     let days = fillDays((((await dayRes.json()) as AdsResp).results ?? []).map((r) => ({ date: r.segments?.date ?? "", ...metric(r) })).filter((d) => d.date), range);
     let campaigns: (AdsCampaign & { id?: string })[] = [];
     if (campRes.ok) {
-      campaigns = (((await campRes.json()) as AdsResp).results ?? []).map((r) => ({ id: digits(r.campaign?.id) || undefined, name: r.campaign?.name ?? "(이름 없음)", ...metric(r) }));
+      campaigns = (((await campRes.json()) as AdsResp).results ?? []).map((r) => ({ id: digits(r.campaign?.id) || undefined, name: r.campaign?.name ?? "(이름 없음)", state: googleState(r.campaign?.status), ...metric(r) }));
     } else {
       // 캠페인 목록 실패는 합계(일별)에는 영향이 없어 숨기지 않고 드러낸다 — 효과 판정·캠페인 표만 비게 된다.
       const body = (await campRes.json().catch(() => ({}))) as AdsResp;
@@ -168,7 +169,7 @@ export async function googleAdsSummary(brand: BrandId, range: DateRange): Promis
         }
       }
       for (const { c, d } of picks) {
-        moved.push({ source: "google", from: brand, to: d.to, account: info?.descriptiveName || `고객 ${customerId}`, name: c.name, currency, spend: c.cost, impressions: c.impressions, clicks: c.clicks, why: d.why, days: (c.id && dailyById.get(c.id)) || eachDay(range.prev.from, range.to).map((date) => ({ date, spend: 0, impressions: 0, clicks: 0 })) });
+        moved.push({ source: "google", from: brand, to: d.to, account: info?.descriptiveName || `고객 ${customerId}`, name: c.name, currency, spend: c.cost, impressions: c.impressions, clicks: c.clicks, state: c.state, why: d.why, days: (c.id && dailyById.get(c.id)) || eachDay(range.prev.from, range.to).map((date) => ({ date, spend: 0, impressions: 0, clicks: 0 })) });
       }
       const gone = new Set(picks.map((x) => x.c));
       campaigns = campaigns.filter((c) => !gone.has(c));

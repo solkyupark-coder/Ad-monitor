@@ -2,6 +2,7 @@
 import { BRANDS, type BrandId } from "@/lib/platforms";
 import { eachDay, type DateRange } from "@/lib/range";
 import { decide, hostsIn, loadRules, subtractDays, type MovedAd, type Rules } from "@/lib/attribution";
+import { metaState, type CampaignState } from "@/lib/campaign-state";
 
 export type MetaDay = { date: string; spend: number; impressions: number; clicks: number };
 export type MetaCampaign = {
@@ -11,6 +12,7 @@ export type MetaCampaign = {
   clicks: number;
   account?: string; // 이 캠페인이 있는 광고 계정 이름(계정이 여러 개일 때 구분)
   status?: string; // 메타 effective_status (ACTIVE, PAUSED …)
+  state?: CampaignState; // 집행 중 / 중지됨 / 삭제됨 — 캠페인·광고 상태로 정한다(부스트 포함)
   promo?: boolean; // 인스타·페이스북 프로모션(부스트)로 보이는 캠페인
   paidBy?: string; // 다른 브랜드 광고 계정에서 결제돼 이 브랜드로 옮겨 온 캠페인이면 그 표시(예: "Houscaper 계정에서 결제됨")
 };
@@ -85,7 +87,7 @@ function configuredAccounts(prefix: string): { main: string | null; extra: strin
 // 인스타·페이스북 '게시물 홍보(부스트)'로 만들어진 캠페인 이름 패턴(비즈니스 스위트 기본 이름 포함).
 const PROMO_NAME = /(^|[\s\[(])(instagram|facebook|ig|fb)\s*(post|reel|story)|boost|부스트|홍보|게시물 홍보|promotion/i;
 
-type AcctOk = { ok: true; name: string; currency: string; days: MetaDay[]; campaigns: (Row & { status?: string })[] };
+type AcctOk = { ok: true; name: string; currency: string; days: MetaDay[]; campaigns: (Row & { status?: string; state?: CampaignState })[] };
 type AcctResult = AcctOk | { ok: false; reason: string };
 
 function graphReason(body: GraphError): string {
@@ -94,23 +96,39 @@ function graphReason(body: GraphError): string {
   return "조회 실패 — 광고 계정 ID와 토큰 권한을 확인하세요";
 }
 
+// 상태 조회에 쓰는 필터: 기본 조회는 삭제·보관된 캠페인/광고를 빼므로 상태를 명시해 같이 받는다.
+const CAMPAIGN_STATUSES = ["ACTIVE", "PAUSED", "DELETED", "ARCHIVED", "IN_PROCESS", "WITH_ISSUES"];
+const AD_STATUSES = ["ACTIVE", "PAUSED", "DELETED", "ARCHIVED", "CAMPAIGN_PAUSED", "ADSET_PAUSED", "IN_PROCESS", "WITH_ISSUES", "PENDING_REVIEW", "PREAPPROVED", "DISAPPROVED", "PENDING_BILLING_INFO"];
+
 async function fetchAccount(token: string, account: string, range: DateRange): Promise<AcctResult> {
   const headers = { authorization: `Bearer ${token}` };
   const get = (path: string) => fetch(`${API}/${account}${path}`, { headers, next: { revalidate: 600 } });
+  const enc = (v: unknown) => encodeURIComponent(JSON.stringify(v));
   try {
-    const [infoRes, dayRes, campRes, statusRes] = await Promise.all([
+    const [infoRes, dayRes, campRes, statusRes, adsRes] = await Promise.all([
       get("?fields=name,currency"),
-      get(`/insights?fields=spend,impressions,clicks&time_increment=1&limit=1000&time_range=${encodeURIComponent(JSON.stringify({ since: range.prev.from, until: range.to }))}`),
-      get(`/insights?fields=campaign_id,campaign_name,spend,impressions,clicks&level=campaign&limit=50&time_range=${encodeURIComponent(JSON.stringify({ since: range.from, until: range.to }))}`),
-      get("/campaigns?fields=id,effective_status&limit=200"),
+      get(`/insights?fields=spend,impressions,clicks&time_increment=1&limit=1000&time_range=${enc({ since: range.prev.from, until: range.to })}`),
+      get(`/insights?fields=campaign_id,campaign_name,spend,impressions,clicks&level=campaign&limit=50&time_range=${enc({ since: range.from, until: range.to })}`),
+      get(`/campaigns?fields=id,effective_status,configured_status&limit=500&effective_status=${enc(CAMPAIGN_STATUSES)}`),
+      get(`/ads?fields=campaign_id,effective_status&limit=500&effective_status=${enc(AD_STATUSES)}`),
     ]);
     const failed = [infoRes, dayRes].find((r) => !r.ok);
     if (failed) return { ok: false, reason: graphReason((await failed.json().catch(() => ({}))) as GraphError) };
     const info = (await infoRes.json()) as { name?: string; currency?: string };
     const days = fillDays(((await dayRes.json()) as { data?: Row[] }).data ?? [], range);
-    const status = new Map<string, string>();
-    if (statusRes.ok) for (const c of ((await statusRes.json()) as { data?: { id?: string; effective_status?: string }[] }).data ?? []) if (c.id && c.effective_status) status.set(c.id, c.effective_status);
-    const campaigns = campRes.ok ? (((await campRes.json()) as { data?: Row[] }).data ?? []).map((r) => ({ ...r, status: r.campaign_id ? status.get(r.campaign_id) : undefined })) : [];
+    // 상태 필터가 거절되면(드문 API 차이) 필터 없이 한 번 더 — 삭제된 캠페인만 못 볼 뿐 나머지 상태는 읽힌다.
+    let statusBody = statusRes;
+    if (!statusRes.ok) statusBody = await get("/campaigns?fields=id,effective_status,configured_status&limit=500");
+    const status = new Map<string, { effective?: string; configured?: string }>();
+    if (statusBody.ok) for (const c of ((await statusBody.json()) as { data?: { id?: string; effective_status?: string; configured_status?: string }[] }).data ?? []) if (c.id) status.set(c.id, { effective: c.effective_status, configured: c.configured_status });
+    const adStatus = new Map<string, string[]>();
+    if (adsRes.ok) for (const a of ((await adsRes.json()) as { data?: { campaign_id?: string; effective_status?: string }[] }).data ?? []) if (a.campaign_id && a.effective_status) adStatus.set(a.campaign_id, [...(adStatus.get(a.campaign_id) ?? []), a.effective_status]);
+    const campaigns = campRes.ok
+      ? (((await campRes.json()) as { data?: Row[] }).data ?? []).map((r) => {
+          const st = r.campaign_id ? status.get(r.campaign_id) : undefined;
+          return { ...r, status: st?.effective, state: metaState({ effective: st?.effective, configured: st?.configured, ads: r.campaign_id ? adStatus.get(r.campaign_id) : undefined }) };
+        })
+      : [];
     return { ok: true, name: info.name ?? "", currency: info.currency ?? "KRW", days, campaigns };
   } catch {
     return { ok: false, reason: "조회 실패(네트워크)" };
@@ -139,7 +157,7 @@ async function findMoved(token: string, id: string, res: AcctOk, brand: BrandId,
   const links = rules.links.length ? await fetchLinkHosts(token, id) : new Map<string, string[]>();
   const picks = res.campaigns
     .map((r) => ({ r, d: r.campaign_id ? decide(rules, brand, r.campaign_name ?? "", links.get(r.campaign_id) ?? []) : null }))
-    .filter((x): x is { r: Row & { status?: string }; d: { to: BrandId; why: string } } => !!x.d);
+    .filter((x): x is { r: Row & { status?: string; state?: CampaignState }; d: { to: BrandId; why: string } } => !!x.d);
   if (!picks.length) return [];
   const ids = picks.map((x) => x.r.campaign_id as string);
   let rows: Row[] = [];
@@ -161,6 +179,7 @@ async function findMoved(token: string, id: string, res: AcctOk, brand: BrandId,
     impressions: Number(r.impressions ?? 0),
     clicks: Number(r.clicks ?? 0),
     status: r.status,
+    state: r.state,
     why: d.why,
     days: fillDays(rows.filter((x) => x.campaign_id === r.campaign_id), range),
   }));
@@ -291,6 +310,7 @@ export async function metaSummary(brand: BrandId, range: DateRange): Promise<Met
           clicks: Number(r.clicks ?? 0),
           account: multi ? res.name || id : undefined,
           status: r.status,
+          state: r.state,
           promo: roles.get(id) !== "main" || PROMO_NAME.test(name),
         };
       }),

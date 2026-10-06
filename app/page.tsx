@@ -8,6 +8,8 @@ import { AdsPanel, Ga4Panel, RevenuePanel, VercelPanel } from "@/components/pane
 import { ActionsPanel, OverviewPanel } from "@/components/Overview";
 import { EffectPanel } from "@/components/EffectPanel";
 import { LevelIcon } from "@/components/icons";
+import { StateBadge } from "@/components/StateBadge";
+import { isStopped } from "@/lib/campaign-state";
 import { ViewTabs, type TabDef } from "@/components/ViewTabs";
 import type { FlowSeries } from "@/components/FlowChart";
 import { loadDashboard } from "@/lib/dashboard";
@@ -29,6 +31,8 @@ const STATUS: Record<string, { text: string; level: "good" | "warn" | "bad" | "h
   ARCHIVED: { text: "보관", level: "hold" },
   DELETED: { text: "삭제됨", level: "hold" },
 };
+
+const PLAIN_STATUS = new Set(["ACTIVE", "PAUSED", "CAMPAIGN_PAUSED", "ADSET_PAUSED", "DELETED", "ARCHIVED"]);
 
 function MetaPanel({ m, range }: { m: MetaSummary; range: DateRange }) {
   if (!m.ok) {
@@ -144,12 +148,14 @@ function MetaPanel({ m, range }: { m: MetaSummary; range: DateRange }) {
               </thead>
               <tbody>
                 {m.campaigns.slice(0, 12).map((c, i) => {
-                  const st = c.status ? STATUS[c.status] ?? { text: c.status, level: "hold" as const } : null;
+                  // 집행 중/중지됨/삭제됨은 배지로 따로 보이므로, 여기서는 그 밖의 상태(검토 중·문제 있음·반려 등)만 칩으로 남긴다.
+                  const st = c.status && !PLAIN_STATUS.has(c.status) ? STATUS[c.status] ?? { text: c.status, level: "hold" as const } : null;
                   return (
-                  <tr key={`${c.account ?? ""}-${c.name}-${i}`}>
+                  <tr key={`${c.account ?? ""}-${c.name}-${i}`} className={isStopped(c.state) ? "off" : undefined}>
                     <td className="name" title={c.account ? `${c.name} · ${c.account}` : c.name}>
                       {c.name}
                       <span className="tags">
+                        <StateBadge state={c.state} raw={c.status} />
                         {c.paidBy && <span className="vchip warn" title="이 광고비는 다른 브랜드의 광고 계정에서 결제됐습니다">{c.paidBy}</span>}
                         {c.promo && !c.paidBy && <span className="vchip hold">프로모션</span>}
                         {st && (

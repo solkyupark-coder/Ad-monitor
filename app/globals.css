@@ -235,6 +235,13 @@ body:has(dialog[open]) { overflow: hidden; } /* 시트가 열려 있으면 뒤 �
 .chip { flex: none; min-height: 40px; padding: 0 14px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--ink2); font: inherit; font-size: 13px; cursor: pointer; }
 .chip.on { background: var(--ink); color: var(--surface); border-color: var(--ink); }
 .vchip { display: inline-flex; align-items: center; gap: 3px; flex: none; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.sbadge { display: inline-flex; align-items: center; gap: 3px; flex: none; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.sbadge.active { color: var(--good); } .sbadge.paused { color: var(--ink2); } .sbadge.removed { color: var(--ink2); border-style: dashed; }
+/* 이미 꺼진(중지·삭제) 캠페인 행은 회색으로 낮춘다 */
+.data tr.off td, .fx-row.off { color: var(--ink2); }
+.data tr.off .inline-bar span { background: var(--muted); }
+.fx-row.off .fx-name, .fx-row.off .fx-metrics, .fx-row.off .fx-why { color: var(--ink2); font-weight: 500; }
+.fx-row.off .swatch { opacity: .45; }
 .vchip.good { color: var(--good); } .vchip.warn { color: var(--warn); } .vchip.bad { color: var(--bad); } .vchip.hold { color: var(--ink2); }
 .badge-level { display: inline-flex; flex-direction: column; align-items: center; gap: 1px; }
 
@@ -257,6 +264,10 @@ body:has(dialog[open]) { overflow: hidden; } /* 시트가 열려 있으면 뒤 �
 .fx-h3 { margin: 24px 0 8px; }
 .fx-rows { list-style: none; margin: 8px 0 0; padding: 0; }
 .fx-row { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; border-top: 1px solid var(--grid); }
+.fx-top .tags { display: flex; align-items: center; gap: 6px; flex: none; }
+.fx-top { flex-wrap: wrap; }
+.fx-top .fx-name { flex: 1 1 160px; }
+.fx-name .fine-inline { white-space: nowrap; margin-left: 6px; flex: none; }
 .fx-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .fx-name { display: flex; align-items: center; min-width: 0; font-size: 14px; font-weight: 600; }
 .fx-name-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

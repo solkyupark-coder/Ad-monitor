@@ -7,6 +7,7 @@
 //   AD_REASSIGN_EXCEPT="topography; topo-house"                       이름에 이게 있으면 옮기지 않는다(예외)
 //   AD_REASSIGN_DEFAULTS=off                                          기본 규칙(topo, topogenesis.xyz)을 끈다
 import type { BrandId } from "@/lib/platforms";
+import type { CampaignState } from "@/lib/campaign-state";
 
 export type DayRow = { date: string; spend: number; impressions: number; clicks: number };
 export type NameRule = { pattern: string; to: BrandId };
@@ -25,6 +26,7 @@ export type MovedAd = {
   impressions: number;
   clicks: number;
   status?: string;
+  state?: CampaignState; // 집행 중 / 중지됨 / 삭제됨(API 상태 기준)
   why: string; // 옮긴 이유(이름 규칙 / 링크 규칙)
   days: DayRow[]; // [직전 기간 시작 … 기간 끝] 일별
 };

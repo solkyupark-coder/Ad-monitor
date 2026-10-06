@@ -3,11 +3,12 @@
 // 결제(Polar/Supabase)는 채널별로 나눌 수 없어 판정에 쓰지 않는다 — 효과는 '사람이 와서 참여했는가'까지만 본다.
 
 import { fmtValue } from "@/lib/format";
+import { isStopped, type CampaignState } from "@/lib/campaign-state";
 
 export type Channel = "meta" | "google";
 export type Verdict = "good" | "warn" | "bad" | "hold";
 
-export type AdCampaignIn = { name: string; spend: number; impressions: number; clicks: number };
+export type AdCampaignIn = { name: string; spend: number; impressions: number; clicks: number; state?: CampaignState; paidBy?: string };
 export type GaCampaignRow = { campaign: string; sourceMedium: string; sessions: number; engagedSessions: number; engagementSec: number };
 
 export type EffectRow = {
@@ -25,6 +26,8 @@ export type EffectRow = {
   landingRate: number | null; // 세션 / 클릭 — 낮으면 클릭이 사이트에 안 닿음
   verdict: Verdict;
   why: string;
+  state?: CampaignState; // 집행 중 / 중지됨 / 삭제됨 (캠페인 행만)
+  paidBy?: string; // 다른 브랜드 계정에서 결제된 캠페인이면 그 표시
   residual?: boolean; // 캠페인 목록 밖 광고비(상위 N개 제한 등) — 판정에서 제외
 };
 
@@ -32,8 +35,9 @@ export type EffectReport = {
   currency: string;
   channels: EffectRow[];
   campaigns: EffectRow[];
-  best: EffectRow | null; // 효과 있음 중 참여 1회당 비용이 가장 낮은 캠페인
-  worst: EffectRow | null; // 낭비 중 광고비가 가장 큰 캠페인
+  best: EffectRow | null; // 효과 있음 중 참여 1회당 비용이 가장 낮은 캠페인(집행 중인 것만 — 꺼진 캠페인으로 예산을 옮기라고 하지 않는다)
+  worst: EffectRow | null; // 낭비 의심 중 광고비가 가장 큰 캠페인(집행 중인 것만)
+  stoppedBad: EffectRow[]; // 이미 중지·삭제됐지만 낭비 의심이었던 캠페인(광고비 순) — 과거 기록으로만 보여 준다
   unmeasured: number; // GA4와 연결 못 한 캠페인 수
   baseline: number | null; // 기준: 연결된 행 전체의 참여 1회당 비용
   gaMissing: boolean; // GA4 캠페인 리포트를 못 읽음
@@ -142,7 +146,7 @@ export function buildEffect(input: { meta: ChannelIn; ads: ChannelIn; gaCampaign
         engagementRate: sessions ? engaged / sessions : null,
         costPerEngaged: engaged ? c.spend / engaged : null,
         landingRate: c.clicks ? sessions / c.clicks : null,
-        verdict: "hold", why: "",
+        verdict: "hold", why: "", state: c.state, paidBy: c.paidBy,
         unmatched: !named, ambiguous, crossNetwork,
       });
     }
@@ -188,8 +192,10 @@ export function buildEffect(input: { meta: ChannelIn; ads: ChannelIn; gaCampaign
     return { channel: side.channel, name: side.label, currency: side.currency, spend, impressions, clicks, ctr, sessions, engaged, engagementRate: rate, costPerEngaged: cpe, landingRate: clicks ? sessions / clicks : null, ...j };
   });
 
-  const goods = mixedCurrency ? [] : campaigns.filter((c) => c.verdict === "good" && c.costPerEngaged !== null).sort((a, b) => (a.costPerEngaged ?? 0) - (b.costPerEngaged ?? 0));
-  const bads = mixedCurrency ? [] : campaigns.filter((c) => c.verdict === "bad").sort((a, b) => b.spend - a.spend);
+  const live = (c: EffectRow) => !isStopped(c.state);
+  const goods = mixedCurrency ? [] : campaigns.filter((c) => live(c) && c.verdict === "good" && c.costPerEngaged !== null).sort((a, b) => (a.costPerEngaged ?? 0) - (b.costPerEngaged ?? 0));
+  const bads = mixedCurrency ? [] : campaigns.filter((c) => live(c) && c.verdict === "bad").sort((a, b) => b.spend - a.spend);
+  const stoppedBad = campaigns.filter((c) => !live(c) && c.verdict === "bad").sort((a, b) => b.spend - a.spend);
   if (!gaMissing && campaigns.length && campaigns.every((c) => c.verdict === "hold")) notes.push("모든 캠페인이 보류입니다 — 표본이 적거나 광고 링크에 캠페인 이름(utm_campaign)이 없습니다.");
   return {
     currency: currencies[0] ?? "KRW",
@@ -197,7 +203,8 @@ export function buildEffect(input: { meta: ChannelIn; ads: ChannelIn; gaCampaign
     campaigns,
     best: goods[0] ?? null,
     worst: bads[0] ?? null,
-    unmeasured: gaMissing ? 0 : campaigns.filter((c) => !c.residual && c.verdict === "hold" && c.sessions === 0 && c.clicks >= MIN_CLICKS).length,
+    stoppedBad,
+    unmeasured: gaMissing ? 0 : campaigns.filter((c) => live(c) && !c.residual && c.verdict === "hold" && c.sessions === 0 && c.clicks >= MIN_CLICKS).length,
     baseline: mixedCurrency ? null : pool(currencies[0] ?? "KRW", () => true),
     gaMissing,
     mixedCurrency,
@@ -227,7 +234,12 @@ export type EffectHeadline = { level: "bad" | "warn" | "good"; headline: string;
 export const WASTE_SHARE_ALERT = 0.2;
 export const UNMEASURED_SHARE_ALERT = 0.5;
 
-export function effectHeadline(e: EffectReport): EffectHeadline | null {
+// 지금 집행 중인 캠페인만 본 보고서(이미 중지·삭제된 캠페인은 행동 제안의 근거에서 뺀다).
+const liveOnly = (e: EffectReport): EffectReport => ({ ...e, campaigns: e.campaigns.filter((c) => !isStopped(c.state)) });
+
+export function effectHeadline(full: EffectReport): EffectHeadline | null {
+  const e = liveOnly(full);
+  const live = full.campaigns.some((c) => c.state === "active" || isStopped(c.state)) ? "집행 중인 " : ""; // 상태를 아는 경우에만 '집행 중' 이라고 말한다
   if (e.gaMissing || e.mixedCurrency || !e.campaigns.length) return null;
   const { total, segments } = spendByClass(e);
   if (total <= 0) return null;
@@ -235,16 +247,33 @@ export function effectHeadline(e: EffectReport): EffectHeadline | null {
   const p = (r: number) => `${Math.round(r * 100)}%`;
   const goods = e.campaigns.filter((c) => c.verdict === "good");
   if (share("bad") >= WASTE_SHARE_ALERT && e.worst) {
-    return { level: "bad", headline: `광고비의 ${p(share("bad"))}가 '낭비 의심' 캠페인에 쓰임`, action: `'${e.worst.name}'의 예산을 줄이거나 끄고${e.best ? `, '${e.best.name}'으로 옮겨 본다` : ""}` };
+    return { level: "bad", headline: `${live}광고비의 ${p(share("bad"))}가 '낭비 의심' 캠페인에 쓰임`, action: `'${e.worst.name}'의 예산을 줄이거나 끈다${e.best ? `. 효과가 좋은 '${e.best.name}' 쪽으로 예산을 옮겨 본다` : ""}.` };
   }
   if (share("unmeasured") >= UNMEASURED_SHARE_ALERT) {
-    return { level: "warn", headline: `광고비의 ${p(share("unmeasured"))}는 사이트에서 효과를 잴 수 없음`, action: "메타 광고 링크에 utm_campaign(캠페인 이름)을 붙이고, 구글은 자동 태그(GA4 연결)를 확인한다" };
+    return { level: "warn", headline: `${live}광고비의 ${p(share("unmeasured"))}는 사이트에서 효과를 잴 수 없음`, action: "메타 광고 링크에 utm_campaign(캠페인 이름)을 붙이고, 구글은 자동 태그(GA4 연결)를 확인한다." };
   }
   if (e.worst) {
-    return { level: "warn", headline: `낭비 의심 캠페인 ${e.campaigns.filter((c) => c.verdict === "bad").length}개 (광고비의 ${p(share("bad"))})`, action: `'${e.worst.name}'부터 지면·국가·소재를 확인한다` };
+    return { level: "warn", headline: `${live}낭비 의심 캠페인 ${e.campaigns.filter((c) => c.verdict === "bad").length}개 (광고비의 ${p(share("bad"))})`, action: `'${e.worst.name}'부터 지면·국가·소재를 확인한다.` };
   }
   if (goods.length && e.best) {
-    return { level: "good", headline: `효과 있는 캠페인 ${goods.length}개 — 늘릴 후보`, action: `'${e.best.name}' 예산을 조금 늘리고 3일 뒤 참여 1회당 비용을 다시 본다` };
+    return { level: "good", headline: `효과 있는 캠페인 ${goods.length}개 — 늘릴 후보`, action: `'${e.best.name}' 예산을 조금 늘리고 3일 뒤 참여 1회당 비용을 다시 본다.` };
   }
   return null;
 }
+
+// 이미 꺼진(중지·삭제) 캠페인 중 '낭비 의심'이었던 것: 할 일이 아니라 과거 기록. 행동 제안 없이 낮은 단계(info)로만 보여 준다.
+export function effectHistory(e: EffectReport): { headline: string; action: string } | null {
+  const rows = e.stoppedBad;
+  if (!rows.length) return null;
+  const money = (r: EffectRow) => fmtValue(r.spend, "won", r.currency);
+  const allRemoved = rows.every((r) => r.state === "removed");
+  const word = allRemoved ? "삭제됨" : "중지됨";
+  const before = allRemoved ? "삭제 전" : "중지 전";
+  const top = rows[0];
+  const total = e.mixedCurrency ? null : rows.reduce((a, r) => a + r.spend, 0);
+  return {
+    headline: `이미 ${word}: '낭비 의심'이던 캠페인 ${rows.length}개 (${before} 지출 ${total !== null ? fmtValue(total, "won", top.currency) : money(top)})`,
+    action: `이미 꺼져 있어 할 일 없음 — 과거 기록. 가장 큰 건 '${top.name}'(${money(top)}). 같은 소재·타깃으로 다시 켜기 전에만 참고한다.`,
+  };
+}
+

@@ -104,6 +104,11 @@ export function EffectPanel({ e, range, data }: { e: EffectReport; range: DateRa
               <strong>{e.worst.name}</strong>
               <span className="fine">{channelName(e.worst)} · {moneyC(e.worst.spend, e.worst.currency)} 쓰고 참여 {e.worst.engaged}회 (참여율 {pct(e.worst.engagementRate)})</span>
             </>
+          ) : e.stoppedBad[0] ? (
+            <>
+              <strong>낭비 의심 캠페인은 이미 꺼져 있음</strong>
+              <span className="fine">'{e.stoppedBad[0].name}' — {e.stoppedBad[0].state === "removed" ? "삭제됨" : "중지됨"}, 중지 전 지출 {moneyC(e.stoppedBad[0].spend, e.stoppedBad[0].currency)} (할 일 없음, 과거 기록)</span>
+            </>
           ) : (
             <span className="fine">낭비 의심으로 판정된 캠페인이 없습니다</span>
           )}

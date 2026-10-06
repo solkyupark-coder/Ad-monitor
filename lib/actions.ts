@@ -6,7 +6,9 @@ import type { RevenueSummary } from "@/lib/revenue";
 import type { VercelSummary } from "@/lib/vercel";
 import type { YoutubeSummary } from "@/lib/youtube";
 import { compareRevenue } from "@/lib/traffic";
-import { effectHeadline, type EffectReport } from "@/lib/effect";
+import { effectHeadline, effectHistory, type EffectReport } from "@/lib/effect";
+import { isStopped } from "@/lib/campaign-state";
+import { fmtValue } from "@/lib/format";
 
 export type ActionLevel = "bad" | "warn" | "info" | "good";
 export type ActionItem = { level: ActionLevel; area: string; title: string; action: string };
@@ -16,8 +18,8 @@ const sum = <T,>(xs: T[], f: (x: T) => number) => xs.reduce((a, x) => a + f(x), 
 const pctTxt = (r: number) => `${r > 0 ? "+" : ""}${Math.round(r * 100)}%`;
 const CHANGE = 0.3; // 직전 기간 대비 이만큼 움직이면 알린다
 
-// 클릭당 비용이 직전 기간보다 크게 오르면 경고.
-function cpcCheck<T extends Day>(area: string, days: T[], n: number, cost: (d: T) => number): ActionItem | null {
+// 클릭당 비용이 직전 기간보다 크게 오르면 경고. 그 채널 캠페인이 이미 모두 꺼져 있으면 경고 대신 과거 기록(info)으로 낮춘다.
+function cpcCheck<T extends Day>(area: string, days: T[], n: number, cost: (d: T) => number, stopped: { spend: number; currency: string } | null): ActionItem | null {
   const cur = days.slice(-n);
   const prev = days.slice(-2 * n, -n);
   const cc = sum(cur, (d) => d.clicks);
@@ -25,6 +27,7 @@ function cpcCheck<T extends Day>(area: string, days: T[], n: number, cost: (d: T
   if (!cc || !pc) return null;
   const r = sum(cur, cost) / cc / (sum(prev, cost) / pc) - 1;
   if (r < CHANGE) return null;
+  if (stopped) return { level: "info", area, title: `이미 중지됨 — 클릭당 비용 ${pctTxt(r)} (직전 기간 대비)`, action: `이 채널 캠페인은 이미 모두 꺼져 있어 할 일 없음 — 과거 기록(중지 전 지출 ${fmtValue(stopped.spend, "won", stopped.currency)}).` };
   return { level: "warn", area, title: `클릭당 비용 ${pctTxt(r)} (직전 기간 대비)`, action: "비용이 오른 캠페인을 표에서 찾아 예산을 줄이거나 소재를 바꾼다." };
 }
 
@@ -37,15 +40,30 @@ export function buildActions(x: {
   vercel: VercelSummary | null;
   youtube: YoutubeSummary | null;
   pending: string[]; // 연결 안 된 플랫폼 이름
-  verdict?: { level: string; headline: string; action: string } | null; // '한눈에 보기' 결론
+  verdict?: { level: string; headline: string; action: string; adSide?: boolean } | null; // '한눈에 보기' 결론
   effect?: EffectReport | null; // 광고 효과 판정(광고비 중 낭비·측정 불가 비중)
 }): ActionItem[] {
   const out: ActionItem[] = [];
+  // 캠페인 상태(집행 중 / 중지됨 / 삭제됨): 이미 꺼진 캠페인에는 '줄이거나 끄라'는 제안을 하지 않고 과거 기록으로 낮춘다.
+  const rows = x.effect?.campaigns ?? [];
+  const known = rows.filter((c) => !c.residual);
+  const hasResidual = (ch?: string) => rows.some((c) => c.residual && (!ch || c.channel === ch));
+  const channelStopped = (ch: "meta" | "google") => {
+    const mine = known.filter((c) => c.channel === ch);
+    return mine.length > 0 && !hasResidual(ch) && mine.every((c) => isStopped(c.state)) ? { spend: mine.reduce((a, c) => a + c.spend, 0), currency: mine[0].currency } : null;
+  };
+  const allStopped = known.length > 0 && !hasResidual() && known.every((c) => isStopped(c.state));
   if (x.verdict && (x.verdict.level === "bad" || x.verdict.level === "warn")) {
-    out.push({ level: x.verdict.level, area: "광고 퍼널", title: x.verdict.headline, action: x.verdict.action });
+    if (x.verdict.adSide && allStopped) {
+      out.push({ level: "info", area: "광고 퍼널", title: `이미 중지됨 — ${x.verdict.headline}`, action: "광고가 이미 모두 꺼져 있어 할 일 없음 — 과거 기록. 다시 켤 때 이 지면·국가 설정부터 확인한다." });
+    } else {
+      out.push({ level: x.verdict.level, area: "광고 퍼널", title: x.verdict.headline, action: x.verdict.action });
+    }
   }
   const fx = x.effect ? effectHeadline(x.effect) : null;
   if (fx) out.push({ level: fx.level === "good" ? "info" : fx.level, area: "광고 효과", title: fx.headline, action: fx.action });
+  const hist = x.effect ? effectHistory(x.effect) : null;
+  if (hist) out.push({ level: "info", area: "광고 효과", title: hist.headline, action: hist.action });
   const failed = (area: string, s: { ok: boolean; reason?: string } | null) => {
     if (s && !s.ok) out.push({ level: "bad", area, title: `불러오기 실패: ${s.reason}`, action: "카드 안내대로 토큰·권한을 고치거나 다시 연결한다. 고치기 전까지 이 소스 수치는 빠진다." });
   };
@@ -81,11 +99,11 @@ export function buildActions(x: {
 
   // 광고 효율
   if (x.meta?.ok) {
-    const c = cpcCheck("메타", x.meta.days, x.days, (d) => d.spend);
+    const c = cpcCheck("메타", x.meta.days, x.days, (d) => d.spend, channelStopped("meta"));
     if (c) out.push(c);
   }
   if (x.ads?.ok) {
-    const c = cpcCheck("구글 광고", x.ads.days, x.days, (d) => d.cost);
+    const c = cpcCheck("구글 광고", x.ads.days, x.days, (d) => d.cost, channelStopped("google"));
     if (c) out.push(c);
   }
 

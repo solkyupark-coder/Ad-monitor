@@ -110,6 +110,13 @@ cashlee.co, ad2click.co 같은 "클릭하면 돈 주는" 사이트에서 오는 
   - `AD_REASSIGN_DEFAULTS=off` — 기본 규칙(`topo`, `topogenesis.xyz`)을 끈다.
 - **한계**: 메타는 선택 기간에 지출이 있는 캠페인만 본다. 이름에 `topo`가 들어간 다른 브랜드 캠페인(예: "topography")은 예외 규칙으로 막는다.
 
+## 캠페인 상태: 집행 중 / 중지됨 / 삭제됨 (`lib/campaign-state.ts`)
+- 상태는 **API 기준**이다. Google Ads `campaign.status`(ENABLED / PAUSED / REMOVED), Meta 캠페인 `effective_status`·`configured_status`(PAUSED, CAMPAIGN_PAUSED, ADSET_PAUSED, DELETED, ARCHIVED …). 삭제·보관된 캠페인도 읽으려고 상태 필터를 명시해서 요청한다.
+- **부스트**는 캠페인은 켜져 있는데 광고만 꺼지는 경우가 있어서, 그 캠페인의 광고(`/ads`) 상태도 같이 읽고 **돌고 있는 광고가 하나도 없으면** 중지됨(광고가 모두 삭제·보관이면 삭제됨)으로 본다. 검토 중·반려·문제 있음은 우리가 끈 게 아니므로 집행 중으로 두고 따로 칩을 보인다.
+- 광고 상세·광고 효과 표의 캠페인 행마다 상태 배지(집행 중 / 중지됨 / 삭제됨)가 붙고, 꺼진 행은 회색이다. 다른 브랜드 계정에서 결제된 행의 "Houscaper 계정에서 결제됨" 표시는 그대로 유지한다.
+- **이미 꺼진 캠페인에는 행동 제안을 하지 않는다**: '가장 큰 낭비 의심'·'예산을 옮길 후보'·낭비 비중 카드는 집행 중인 캠페인만 근거로 삼고, 꺼진 쪽 낭비는 "이미 중지됨 (중지 전 지출 X원)" 과거 기록(정보 단계)으로 낮춘다. 한 채널의 캠페인이 모두 꺼져 있으면 클릭당 비용 경고·광고 설정 제안도 같은 기록으로 낮춘다.
+- 한계: 상태는 읽는 시점 기준이다(중지한 날짜는 모른다). 지출은 선택한 기간 전체이며 "중지 전 지출"로 표시한다. Meta 광고 상태는 한 번에 500개까지만 읽는다.
+
 ## 레딧 refresh token 발급 (`/api/reddit/connect`)
 1. `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `{브랜드}_REDDIT_AD_ACCOUNT_ID`가 있고 refresh token만 없으면 레딧 카드에 "레딧 연결하기" 버튼이 보인다.
 2. **`https://ad-monitor-eight.vercel.app`에 로그인한 상태에서** 누른다. 레딧 앱의 redirect URI가 이 주소(루트)여야 한다. 다른 주소로 접속하면 redirect가 달라져 레딧이 거절한다(`REDDIT_REDIRECT_URI`로 고정 가능).

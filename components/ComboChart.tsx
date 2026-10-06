@@ -137,7 +137,7 @@ export function ComboChart({ combo, title }: { combo: ComboData; title: string }
     { k: "users", label: usersName, kind: "line1", off: has.users ? undefined : "GA4가 연결되지 않았거나 일별 값을 읽지 못했습니다" },
     { k: "clicks", label: "광고 클릭", kind: "line2", off: has.clicks ? undefined : "광고 소스가 연결되지 않았습니다" },
     { k: "orders", label: "결제", kind: "mark", off: has.orders ? undefined : "결제(Polar·Supabase)가 연결되지 않았습니다" },
-    { k: "signups", label: "가입", kind: "mark2", off: has.signups ? undefined : "가입 집계(Supabase 가입 뷰)가 연결되지 않았습니다 — README 참고" },
+    { k: "signups", label: "가입", kind: "mark2", off: has.signups ? undefined : "가입 집계(Supabase 함수)가 연결되지 않았거나 시간별 값은 제공되지 않습니다 — 1일 보기는 하루 합계만 표시" },
     { k: "prev", label: hourly ? "전날" : "직전 기간", kind: "dash", off: prev.length === n ? undefined : "비교할 이전 기간 데이터가 없습니다" },
   ];
   const KeyIcon = ({ kind }: { kind: string }) => (

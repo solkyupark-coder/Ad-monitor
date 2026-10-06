@@ -26,11 +26,10 @@ export function OverviewPanel({ o, range, costPerEngaged, combo, brandLabel, sig
     o.signups !== null ? (
       <Stat key="signups" label="신규 가입" value={`${n(o.signups)}명`}>
         <Delta cur={o.signups} prev={o.signupsPrev} goodWhen="up" />
-        {signups && signups.ok && signups.truncated && <span className="delta flat">1000건 넘어 일부만 읽음</span>}
       </Stat>
     ) : o.primary === "signups" ? (
       <Stat key="signups" label="신규 가입" value="연결 안 됨">
-        <span className="delta flat">{signupFail ?? "가입 집계 뷰 설정 필요 — README 참고"}</span>
+        <span className="delta flat">{signupFail ?? "가입 집계 함수 연결 필요 — README 참고"}</span>
       </Stat>
     ) : null;
   const costSignup = o.signups !== null ? (

@@ -123,8 +123,6 @@ export const OPTIONAL_ENV = [
   "REFERRER_ALLOWLIST", // 패턴에 잘못 걸린 정상 도메인을 풀어 줌
   "INTERNAL_EXCLUDE_CITIES", // 운영자 본인 접속을 GA4 도시 기준으로 제외(쉼표 구분, 예: Gwacheon-si)
   "{BRAND}_INTERNAL_EXCLUDE_CITIES", // 위와 같은 용도, 그 브랜드만(공통 값에 더해짐)
-  "{BRAND}_SIGNUP_TABLE", // 신규 가입 집계 뷰/테이블(가입 시각 컬럼만 읽음). 기본 signups — 만드는 SQL 은 README
-  "{BRAND}_SIGNUP_DATE_COLUMN", // 가입 시각 컬럼. 기본 created_at
   "{BRAND}_PRIMARY_KPI", // 핵심 전환 signups|orders (기본: 토포제네시스 signups, 하우스케이퍼 orders)
   "FX_USD_KRW", // 통화가 섞인 광고비(예: 메타 USD + 구글 KRW)를 원화로 합칠 때 쓰는 달러 환율(원). 기본 1400 — 실시간 환율이 아니라 고정값
   "FX_RATES", // 통화별 환율 추가·덮어쓰기: "USD=1380,JPY=9.2,EUR=1500"
@@ -136,7 +134,8 @@ export const OPTIONAL_ENV = [
   "{BRAND}_GOOGLE_ADS_LOGIN_CUSTOMER_ID", // 브랜드별 관리자(MCC) ID. none 이면 헤더를 보내지 않는다(공통 값보다 우선)
   "GOOGLE_ADS_LOGIN_CUSTOMER_ID", // 관리자(MCC) 계정으로 접근할 때만
   "GOOGLE_ADS_API_VERSION", // 기본 v25. 구버전은 정해진 날짜에 종료된다
-  "DASHBOARD_UTC_OFFSET_HOURS", // 실매출 날짜 경계. 기본 9(한국)
+  "DASHBOARD_UTC_OFFSET_HOURS", // 실매출·가입 날짜 경계. 기본 9(한국)
+  "DASHBOARD_TIMEZONE", // 가입 집계 함수에 넘기는 IANA 시간대(기본 Asia/Seoul, 오프셋 설정이 있으면 그에 맞춤)
   "REDDIT_REDIRECT_URI", // 레딧 앱에 등록한 redirect. 기본은 접속한 사이트 주소(루트)
   "YOUTUBE_REDIRECT_URI", // 구글 클라이언트에 등록한 redirect. 기본은 {사이트}/api/youtube/callback
   // 아래는 브랜드 접두사(HOUSCAPER_/TOPOGENESIS_)를 붙여 쓴다

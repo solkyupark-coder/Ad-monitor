@@ -30,7 +30,7 @@ export type Dashboard = {
   rev: RevenueSummary | null;
   ads: GoogleAdsSummary | null;
   vc: VercelSummary | null;
-  signups: SignupSummary | null; // 신규 가입(Supabase 가입 뷰). 연결 안 됐으면 null. 내보내기에서는 읽지 않는다
+  signups: SignupSummary | null; // 신규 가입(Supabase RPC 일별 개수). 연결 안 됐으면 null. 내보내기에서는 읽지 않는다
   primary: "signups" | "orders"; // 이 브랜드의 핵심 전환(토포제네시스는 가입)
   combo: ComboData | null; // 겹쳐 그리는 일별 그래프(한눈에 보기). 내보내기에서는 만들지 않는다
   overview: Overview;
@@ -115,8 +115,9 @@ export async function loadDashboard(brand: BrandId, range: DateRange, skip: { yo
           usersDayTotal: ga && ga.ok ? Math.round(ga.real.activeUsers) : null,
           orders: demo ? demoRevenueHours(range) : revDays && !Array.isArray(revDays) && revDays.ok ? revDays.hours : null,
           ordersDayTotal: rev && rev.ok ? rev.orders : null,
-          signups: signups && signups.ok ? signups.hours : null,
-          signupsDayTotal: signups && signups.ok ? signups.hours.filter((h) => h.date === range.to).reduce((a, h) => a + h.value, 0) : null,
+          // 가입은 일별 개수만 받을 수 있어 시간별 마커는 그리지 않고 하루 합계만 알린다.
+          signups: null,
+          signupsDayTotal: signups && signups.ok ? signups.days.find((d) => d.date === range.to)?.signups ?? 0 : null,
         })
       : buildCombo({
           range,

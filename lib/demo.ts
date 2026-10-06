@@ -153,14 +153,12 @@ export function demoRevenueHours(r: DateRange): { date: string; hour: number; va
   return r.days === 1 ? demoHours(r).filter((h) => h.hour % 7 === 3).map((h) => ({ ...h, value: 1 })) : null;
 }
 
-// 데모: 가입은 평일엔 하루 몇 명, 시간별은 몇 시간에만.
+// 데모: 가입은 일별 개수만(시간별은 없다 — 1일 보기는 하루 합계만 표시).
 import type { SignupSummary } from "@/lib/signups";
 export function demoSignups(r: DateRange): SignupSummary {
   const days = demoDays(r).map((date, i) => ({ date, signups: i % 3 === 1 ? 0 : 1 + (i % 4) }));
-  const hours = r.days === 1 ? demoHours(r).filter((h) => h.hour % 5 === 2).map((h) => ({ ...h, value: 1 + (h.hour % 2) })) : [];
-  const inR = days.filter((d) => d.date >= r.from && d.date <= r.to).reduce((a, d) => a + d.signups, 0);
-  const prevR = days.filter((d) => d.date >= r.prev.from && d.date <= r.prev.to).reduce((a, d) => a + d.signups, 0);
-  return { ok: true, count: r.days === 1 ? hours.filter((h) => h.date === r.to).reduce((a, h) => a + h.value, 0) : inR, countPrev: r.today ? null : prevR, days, hours, truncated: false };
+  const sum = (from: string, to: string) => days.filter((d) => d.date >= from && d.date <= to).reduce((a, d) => a + d.signups, 0);
+  return { ok: true, count: sum(r.from, r.to), countPrev: r.today ? null : sum(r.prev.from, r.prev.to), days };
 }
 
 export function demoRevenue(_r: DateRange): RevenueSummary {

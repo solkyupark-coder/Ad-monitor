@@ -1,7 +1,8 @@
 import { fmtValue } from "@/lib/format";
 import { logWidth, type Overview } from "@/lib/overview";
 import { Delta, Stat } from "@/components/ui";
-import { FlowChart, type FlowSeries } from "@/components/FlowChart";
+import { ComboChart } from "@/components/ComboChart";
+import type { ComboData } from "@/lib/combo";
 import { LevelIcon, type Level } from "@/components/icons";
 import type { DateRange } from "@/lib/range";
 import type { ActionItem } from "@/lib/actions";
@@ -12,7 +13,7 @@ const LEVEL_WORD: Record<string, string> = { bad: "긴급", warn: "확인", info
 // 채널 색은 채널(엔티티)에 고정: 메타=s1, 구글 광고=s2.
 const channelClass = (name: string) => (name === "메타" ? "c1" : "c2");
 
-export function OverviewPanel({ o, range, costPerEngaged, flow }: { o: Overview; range: DateRange; costPerEngaged: number | null; flow: FlowSeries[] }) {
+export function OverviewPanel({ o, range, costPerEngaged, combo, brandLabel }: { o: Overview; range: DateRange; costPerEngaged: number | null; combo: ComboData | null; brandLabel: string }) {
   const max = Math.max(...o.steps.map((s) => s.value ?? 0), 1);
   const money = (v: number | null, empty: string) => (v === null ? empty : fmtValue(v, "won", o.currency));
   const widths = o.steps.map((s) => (s.value && s.value > 0 ? logWidth(s.value, max) : 0));
@@ -77,6 +78,13 @@ export function OverviewPanel({ o, range, costPerEngaged, flow }: { o: Overview;
         </div>
       </div>
 
+      {combo && (
+        <div className="combo-wrap">
+          <h3>{brandLabel} 일별 추이 <span className="fine-inline">광고비·사용자·클릭·결제를 한 그래프에</span></h3>
+          <ComboChart combo={combo} title={`${brandLabel} 일별 추이`} />
+        </div>
+      )}
+
       <div className="ov-body">
       <div className="fn-wrap">
         <h3>광고에서 결제까지 <span className="fine-inline">막대 길이는 로그 눈금</span></h3>
@@ -130,7 +138,6 @@ export function OverviewPanel({ o, range, costPerEngaged, flow }: { o: Overview;
         </ol>
       </div>
 
-      <FlowChart series={flow} />
       </div>
     </section>
   );

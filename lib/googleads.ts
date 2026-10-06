@@ -6,11 +6,12 @@ import { BRANDS, type BrandId } from "@/lib/platforms";
 import { eachDay, type DateRange } from "@/lib/range";
 import { decide, hostsIn, loadRules, subtractDays, type DayRow, type MovedAd } from "@/lib/attribution";
 import { googleState, type CampaignState } from "@/lib/campaign-state";
+import type { CampaignSeries } from "@/lib/events";
 
 export type AdsDay = { date: string; clicks: number; cost: number; impressions: number };
 export type AdsCampaign = { name: string; clicks: number; cost: number; impressions: number; paidBy?: string; state?: CampaignState }; // state: 집행 중 / 중지됨 / 삭제됨(campaign.status 기준) // paidBy: 다른 브랜드 계정에서 결제돼 옮겨 온 캠페인 표시
 export type GoogleAdsSummary =
-  | { ok: true; accountName: string; currency: string; days: AdsDay[]; campaigns: AdsCampaign[]; notes: string[]; moved: MovedAd[] }
+  | { ok: true; accountName: string; currency: string; days: AdsDay[]; campaigns: AdsCampaign[]; notes: string[]; moved: MovedAd[]; series: CampaignSeries[] }
   | { ok: false; reason: string };
 
 type AdsRow = {
@@ -133,13 +134,34 @@ export async function googleAdsSummary(brand: BrandId, range: DateRange): Promis
       notes.push(`캠페인 목록을 읽지 못했습니다(${tag}) — 합계는 맞지만 캠페인별 표·광고 효과 판정이 비어 있을 수 있습니다.`);
     }
 
-    // 다른 브랜드 광고로 보이는 캠페인(예: Houscaper 계정에서 결제한 Topogenesis 캠페인)은 이 브랜드 합계에서 빼 그 브랜드 화면으로 옮긴다.
+    // 캠페인별 일별 지출(직전 기간부터): 그래프의 '켜고 끈 날짜' 추정과 다른 브랜드로 옮길 캠페인의 일별 값에 쓴다. 못 읽어도 나머지는 그대로.
     const search = searchWith(usedLogin);
+    const allDays = eachDay(range.prev.from, range.to);
+    const zero = (): DayRow[] => allDays.map((date) => ({ date, spend: 0, impressions: 0, clicks: 0 }));
+    const dailyById = new Map<string, DayRow[]>();
+    const ids = campaigns.map((c) => c.id).filter((x): x is string => !!x);
+    if (ids.length) {
+      try {
+        const r = await search(`SELECT campaign.id, segments.date, metrics.clicks, metrics.cost_micros, metrics.impressions FROM campaign WHERE campaign.id IN (${ids.join(",")}) AND segments.date BETWEEN '${range.prev.from}' AND '${range.to}'`);
+        if (r.ok) {
+          const rows = ((await r.json()) as AdsResp).results ?? [];
+          for (const id of ids) {
+            const by = new Map<string, DayRow>();
+            for (const row of rows) if (digits(row.campaign?.id) === id && row.segments?.date) { const m = metric(row); by.set(row.segments.date, { date: row.segments.date, spend: m.cost, impressions: m.impressions, clicks: m.clicks }); }
+            dailyById.set(id, allDays.map((date) => by.get(date) ?? { date, spend: 0, impressions: 0, clicks: 0 }));
+          }
+        }
+      } catch {
+        /* 일별을 못 읽으면 캠페인 합계만 쓴다 */
+      }
+    }
+
+    // 다른 브랜드 광고로 보이는 캠페인(예: Houscaper 계정에서 결제한 Topogenesis 캠페인)은 이 브랜드 합계에서 빼 그 브랜드 화면으로 옮긴다.
     const rules = loadRules();
     const linkHosts = new Map<string, string[]>();
     if (rules.links.length && campaigns.length) {
       try {
-        const r = await search(`SELECT campaign.id, ad_group_ad.ad.final_urls FROM ad_group_ad WHERE campaign.id IN (${campaigns.filter((c) => c.id).map((c) => c.id).join(",") || "0"}) LIMIT 500`);
+        const r = await search(`SELECT campaign.id, ad_group_ad.ad.final_urls FROM ad_group_ad WHERE campaign.id IN (${ids.join(",") || "0"}) LIMIT 500`);
         if (r.ok) for (const row of ((await r.json()) as AdsResp).results ?? []) {
           const id = digits(row.campaign?.id);
           if (id) linkHosts.set(id, [...new Set([...(linkHosts.get(id) ?? []), ...hostsIn((row.adGroupAd?.ad?.finalUrls ?? []).join(" "))])]);
@@ -151,25 +173,8 @@ export async function googleAdsSummary(brand: BrandId, range: DateRange): Promis
     const picks = campaigns.map((c) => ({ c, d: decide(rules, brand, c.name, c.id ? linkHosts.get(c.id) ?? [] : []) })).filter((x): x is { c: AdsCampaign & { id?: string }; d: { to: BrandId; why: string } } => !!x.d);
     const moved: MovedAd[] = [];
     if (picks.length) {
-      const dailyById = new Map<string, DayRow[]>();
-      const ids = picks.map((x) => x.c.id).filter((x): x is string => !!x);
-      if (ids.length) {
-        try {
-          const r = await search(`SELECT campaign.id, segments.date, metrics.clicks, metrics.cost_micros, metrics.impressions FROM campaign WHERE campaign.id IN (${ids.join(",")}) AND segments.date BETWEEN '${range.prev.from}' AND '${range.to}'`);
-          if (r.ok) {
-            const rows = ((await r.json()) as AdsResp).results ?? [];
-            for (const id of ids) {
-              const by = new Map<string, DayRow>();
-              for (const row of rows) if (digits(row.campaign?.id) === id && row.segments?.date) { const m = metric(row); by.set(row.segments.date, { date: row.segments.date, spend: m.cost, impressions: m.impressions, clicks: m.clicks }); }
-              dailyById.set(id, eachDay(range.prev.from, range.to).map((date) => by.get(date) ?? { date, spend: 0, impressions: 0, clicks: 0 }));
-            }
-          }
-        } catch {
-          /* 일별을 못 읽으면 캠페인 합계만 옮긴다 */
-        }
-      }
       for (const { c, d } of picks) {
-        moved.push({ source: "google", from: brand, to: d.to, account: info?.descriptiveName || `고객 ${customerId}`, name: c.name, currency, spend: c.cost, impressions: c.impressions, clicks: c.clicks, state: c.state, why: d.why, days: (c.id && dailyById.get(c.id)) || eachDay(range.prev.from, range.to).map((date) => ({ date, spend: 0, impressions: 0, clicks: 0 })) });
+        moved.push({ source: "google", from: brand, to: d.to, account: info?.descriptiveName || `고객 ${customerId}`, name: c.name, currency, spend: c.cost, impressions: c.impressions, clicks: c.clicks, state: c.state, why: d.why, days: (c.id && dailyById.get(c.id)) || zero() });
       }
       const gone = new Set(picks.map((x) => x.c));
       campaigns = campaigns.filter((c) => !gone.has(c));
@@ -177,7 +182,8 @@ export async function googleAdsSummary(brand: BrandId, range: DateRange): Promis
       days = subtractDays(days.map((d) => ({ date: d.date, spend: d.cost, impressions: d.impressions, clicks: d.clicks })), hasDaily.map((m) => m.days)).map((d) => ({ date: d.date, cost: d.spend, impressions: d.impressions, clicks: d.clicks }));
       notes.push(`다른 브랜드 광고로 보이는 캠페인 ${moved.length}개(${moved.map((m) => `${m.name} → ${m.to}`).join(", ")})를 이 브랜드 합계에서 빼 그 브랜드 화면으로 옮겼습니다.`);
     }
-    return { ok: true, accountName: info?.descriptiveName ?? "", currency, days, campaigns: campaigns.map(({ id: _id, ...c }) => c), notes, moved };
+    const series: CampaignSeries[] = campaigns.map((c) => ({ name: c.name, state: c.state, days: ((c.id && dailyById.get(c.id)) || []).map((d) => ({ date: d.date, spend: d.spend })) }));
+    return { ok: true, accountName: info?.descriptiveName ?? "", currency, days, campaigns: campaigns.map(({ id: _id, ...c }) => c), notes, moved, series };
   } catch (e) {
     logFailure("google-ads", brand, `network ${e instanceof Error ? e.message : String(e)}`);
     return { ok: false, reason: "조회 실패(네트워크)" };

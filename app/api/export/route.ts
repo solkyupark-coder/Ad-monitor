@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const range = parseRange({ range: sp.get("range") ?? undefined, from: sp.get("from") ?? undefined, to: sp.get("to") ?? undefined });
   const opts = parseExportOptions(sp);
   // 유튜브는 쓰지 않고, 사이트 방문자(Vercel)는 '일별 흐름'을 담을 때만 읽는다.
-  const data = exportData(await loadDashboard(brand, range, { youtube: true, vercel: !opts.parts.includes("daily") }));
+  const data = exportData(await loadDashboard(brand, range, { youtube: true, vercel: !opts.parts.includes("daily"), combo: true }));
   return new Response(effectCsv(data, opts), {
     headers: {
       "content-type": "text/csv; charset=utf-8",

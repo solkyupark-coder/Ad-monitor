@@ -124,6 +124,7 @@ export const OPTIONAL_ENV = [
   "AD_REASSIGN_RULES", // 다른 브랜드 광고로 옮길 이름 규칙: "패턴=>브랜드; …" (기본: 이름에 topo → topogenesis)
   "AD_REASSIGN_LINK_HOSTS", // 링크 도메인 규칙: "도메인=>브랜드; …" (기본: topogenesis.xyz)
   "AD_REASSIGN_EXCEPT", // 옮기지 않을 이름 패턴(예외)
+  "AD_EVENT_MARKERS", // 일별 그래프에 직접 찍을 날짜: "날짜|라벨|브랜드; …" (브랜드 생략 시 둘 다). 중지·시작 날짜 추정보다 우선
   "AD_REASSIGN_DEFAULTS", // off 면 기본 재분류 규칙을 끈다
   "{BRAND}_GOOGLE_ADS_LOGIN_CUSTOMER_ID", // 브랜드별 관리자(MCC) ID. none 이면 헤더를 보내지 않는다(공통 값보다 우선)
   "GOOGLE_ADS_LOGIN_CUSTOMER_ID", // 관리자(MCC) 계정으로 접근할 때만

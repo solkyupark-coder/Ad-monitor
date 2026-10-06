@@ -4,9 +4,13 @@ import { eachDay, type DateRange } from "@/lib/range";
 import { addDays, type DayRow, type MovedAd } from "@/lib/attribution";
 import type { MetaCampaign, MetaDay, MetaSummary } from "@/lib/meta";
 import type { AdsCampaign, AdsDay, GoogleAdsSummary } from "@/lib/googleads";
+import type { CampaignSeries } from "@/lib/events";
 
 const NAME: Record<BrandId, string> = { houscaper: "Houscaper", topogenesis: "Topogenesis" };
 export const paidByLabel = (from: BrandId) => `${NAME[from]} 계정에서 결제됨`;
+
+// 옮겨 온 캠페인도 받는 브랜드 그래프의 '켜고 끈 날짜' 계산에 들어간다.
+const movedSeries = (use: MovedAd[]): CampaignSeries[] => use.map((m) => ({ name: m.name, state: m.state, days: m.days.map((d) => ({ date: d.date, spend: d.spend })) }));
 
 const zeroDays = (range: DateRange): DayRow[] => eachDay(range.prev.from, range.to).map((date) => ({ date, spend: 0, impressions: 0, clicks: 0 }));
 
@@ -46,6 +50,7 @@ export function mergeMetaMoved(view: BrandId, own: MetaSummary | null, others: (
     accounts: keepBase ? baseOk.accounts : [],
     notes,
     moved: [],
+    series: [...(keepBase ? baseOk.series : []), ...movedSeries(use)],
   };
 }
 
@@ -72,5 +77,6 @@ export function mergeAdsMoved(view: BrandId, own: GoogleAdsSummary | null, other
     campaigns: [...(keepBase ? baseOk.campaigns : []), ...add].sort((a, b) => b.cost - a.cost),
     notes,
     moved: [],
+    series: [...(keepBase ? baseOk.series : []), ...movedSeries(use)],
   };
 }

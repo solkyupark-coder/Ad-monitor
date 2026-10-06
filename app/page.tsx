@@ -11,7 +11,6 @@ import { LevelIcon } from "@/components/icons";
 import { StateBadge } from "@/components/StateBadge";
 import { isStopped } from "@/lib/campaign-state";
 import { ViewTabs, type TabDef } from "@/components/ViewTabs";
-import type { FlowSeries } from "@/components/FlowChart";
 import { loadDashboard } from "@/lib/dashboard";
 import { exportData } from "@/lib/export";
 import { parseRange, PRESETS, rangeQuery, yesterdayDate, type DateRange } from "@/lib/range";
@@ -275,20 +274,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<Que
   const d = await loadDashboard(brand, range);
   const { meta, yt, ga, rev, ads, vc, overview, effect, actions, pending } = d;
 
-  // 한눈에 보기 일별 흐름: 광고비 / 클릭 / (있으면) 사이트 방문자 중 하나를 골라 본다.
-  const flow: FlowSeries[] = [];
-  const sumOf = (xs: number[]) => xs.reduce((a, x) => a + x, 0);
-  if (overview.daily.some((p) => p.spend !== null)) {
-    flow.push({ key: "spend", label: "광고비", kind: "won", currency: overview.currency, total: fmtValue(sumOf(overview.daily.map((p) => p.spend ?? 0)), "won", overview.currency), points: overview.daily.map((p) => ({ date: p.date, value: p.spend ?? 0 })) });
-  }
-  if (overview.daily.length) {
-    flow.push({ key: "clicks", label: "광고 클릭", kind: "count", total: fmtValue(sumOf(overview.daily.map((p) => p.clicks)), "count"), points: overview.daily.map((p) => ({ date: p.date, value: p.clicks })) });
-  }
-  if (vc && vc.ok && vc.analytics.ok) {
-    const days = vc.analytics.days.slice(-range.days);
-    flow.push({ key: "visitors", label: "방문자", kind: "count", total: `${fmtValue(sumOf(days.map((x) => x.visitors)), "count")}명`, points: days.map((x) => ({ date: x.date, value: x.visitors })) });
-  }
-
   const exportJson = exportData(d);
   const urgent = actions.filter((a) => a.level === "bad").length;
   const check = actions.filter((a) => a.level === "warn").length;
@@ -302,7 +287,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Que
       badge: urgent ? { text: `긴급 ${urgent}`, short: String(urgent), level: "bad" } : check ? { text: `확인 ${check}`, short: String(check), level: "warn" } : null,
       node: (
         <>
-          <OverviewPanel o={overview} range={range} costPerEngaged={effectCostPerEngaged(effect)} flow={flow} />
+          <OverviewPanel o={overview} range={range} costPerEngaged={effectCostPerEngaged(effect)} combo={d.combo} brandLabel={d.brandLabel} />
           <ActionsPanel items={actions} />
         </>
       ),

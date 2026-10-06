@@ -32,6 +32,7 @@ export type Ga4Summary =
       geoTruncated: boolean;
       campaigns: GaCampaignRow[] | null; // 캠페인×소스/매체 유입(데이터센터 도시 제외). 못 읽으면 null
       campaignsTruncated: boolean; // 행이 많아 일부만 읽음
+      daily: { date: string; users: number }[] | null; // 일별 실사용자(직전 기간부터): 데이터센터 도시·PTC 유입 제외. 못 읽으면 null
       blocked: { sessions: number; users: number } | null; // 리워드·클릭팜(PTC) 유입으로 보고 위 모든 수치에서 뺀 양. 못 읽으면 null
     }
   | { ok: false; reason: string };
@@ -76,6 +77,7 @@ export function assembleGa4(input: {
   campaigns?: GaCampaignRow[] | null;
   campaignsTruncated?: boolean;
   blocked?: { sessions: number; users: number } | null;
+  daily?: { date: string; users: number }[] | null;
 }): Ga4Summary {
   const sCur = splitTraffic(input.geoCur, input.total.activeUsers, input.total.sessions);
   const sPrev = splitTraffic(input.geoPrev, input.totalPrev.activeUsers, input.totalPrev.sessions);
@@ -94,6 +96,7 @@ export function assembleGa4(input: {
     campaigns: input.campaigns ?? null,
     campaignsTruncated: input.campaignsTruncated ?? false,
     blocked: input.blocked ?? null,
+    daily: input.daily ?? null,
   };
 }
 
@@ -146,7 +149,16 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
       metrics: ["sessions", "activeUsers"].map((name) => ({ name })),
       dimensionFilter: ptcFilter,
     });
-    const [ov, src, geo, geoPrev, camp, ptc] = await Promise.all([
+    // 그래프용 일별 실사용자(직전 기간부터 한 번에). 데이터센터 도시와 PTC 유입은 요청 단계에서 뺀다.
+    const dailyReport = run({
+      dateRanges: [{ startDate: range.prev.from, endDate: range.to }],
+      dimensions: [{ name: "date" }],
+      metrics: [{ name: "activeUsers" }],
+      dimensionFilter: { andGroup: { expressions: [{ notExpression: { filter: { fieldName: "city", inListFilter: { values: DATACENTER_CITIES } } } }, notPtc] } },
+      orderBys: [{ dimension: { dimensionName: "date" } }],
+      limit: 400,
+    });
+    const [ov, src, geo, geoPrev, camp, ptc, dayRes] = await Promise.all([
       run({
         dateRanges: [rCur, rPrev],
         dimensionFilter: notPtc,
@@ -164,6 +176,7 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
       geoReport(rPrev),
       campaignReport,
       ptcReport,
+      dailyReport,
     ]);
     const bad = [ov, src, geo, geoPrev].find((r) => !r.ok);
     if (bad) {
@@ -232,6 +245,16 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
     } else {
       logFailure("ga4", brand, `ptc report ${ptc.status}`);
     }
+    let daily: { date: string; users: number }[] | null = null;
+    if (dayRes.ok) {
+      const rows = (((await dayRes.json()) as GaResp).rows ?? []).flatMap((r) => {
+        const d = r.dimensionValues?.[0]?.value ?? "";
+        return /^\d{8}$/.test(d) ? [{ date: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6)}`, users: num(r, 0) }] : [];
+      });
+      daily = rows;
+    } else {
+      logFailure("ga4", brand, `daily report ${dayRes.status}`); // 그래프의 실사용자 선만 빠진다
+    }
     return assembleGa4({
       currency: ovJson.metadata?.currencyCode ?? "",
       total,
@@ -243,6 +266,7 @@ export async function ga4Summary(brand: BrandId, range: DateRange): Promise<Ga4S
       campaigns,
       campaignsTruncated,
       blocked,
+      daily,
     });
   } catch (e) {
     logFailure("ga4", brand, `network ${e instanceof Error ? e.message : String(e)}`);

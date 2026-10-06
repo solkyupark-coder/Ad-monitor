@@ -2,7 +2,7 @@
 // 브랜드 Supabase purchase 테이블은 함께 있으면 대조값, Polar 토큰이 없으면 대체값이다.
 // 토큰·키 값은 화면·로그에 내지 않는다.
 import type { BrandId } from "@/lib/platforms";
-import { rangeInstants, type DateRange } from "@/lib/range";
+import { offsetMs, rangeInstants, type DateRange } from "@/lib/range";
 
 export type RevenueSummary =
   | {
@@ -26,10 +26,12 @@ export const POLAR_TOKEN_ENV: Record<BrandId, string> = {
   topogenesis: "TOPOGENESIS_POLAR_ACCESS_TOKEN",
 };
 
-async function polar(tokenEnv: string, range: DateRange): Promise<RevenueSummary> {
+type PolarFetch = { ok: true; paid: PolarOrder[]; truncated: boolean } | { ok: false; reason: string };
+
+// [since, until) 에 만들어진 결제 완료 주문들.
+async function polarPaid(tokenEnv: string, since: Date, until: Date): Promise<PolarFetch> {
   const token = process.env[tokenEnv];
   if (!token) return { ok: false, reason: "자격증명 없음" };
-  const { since, until } = rangeInstants(range);
   const mine: PolarOrder[] = [];
   let truncated = false;
   try {
@@ -56,11 +58,18 @@ async function polar(tokenEnv: string, range: DateRange): Promise<RevenueSummary
     return { ok: false, reason: "Polar 조회 실패(네트워크)" };
   }
   // 결제 완료된 주문만. paid 필드가 없으면 status 로 판단한다.
-  const paid = mine.filter((o) => o.paid ?? o.status === "paid");
+  return { ok: true, paid: mine.filter((o) => o.paid ?? o.status === "paid"), truncated };
+}
+
+async function polar(tokenEnv: string, range: DateRange): Promise<RevenueSummary> {
+  const { since, until } = rangeInstants(range);
+  const r = await polarPaid(tokenEnv, since, until);
+  if (!r.ok) return r;
+  const paid = r.paid;
   const currency = (paid[0]?.currency ?? "usd").toUpperCase();
   const minor = ZERO_DECIMAL.has(currency) ? 1 : 100;
   const amount = paid.filter((o) => (o.currency ?? "usd").toUpperCase() === currency).reduce((a, o) => a + (o.net_amount ?? o.total_amount ?? 0), 0) / minor;
-  return { ok: true, source: "polar", currency, orders: paid.length, amount, truncated };
+  return { ok: true, source: "polar", currency, orders: paid.length, amount, truncated: r.truncated };
 }
 
 async function supabasePurchases(prefix: string, range: DateRange): Promise<RevenueSummary> {
@@ -105,4 +114,57 @@ export async function revenueSummary(brand: BrandId, range: DateRange): Promise<
   if (!process.env[tokenEnv] && hasSupabase(prefix)) return supabasePurchases(prefix, range);
   const [main, alt] = await Promise.all([polar(tokenEnv, range), hasSupabase(prefix) ? supabasePurchases(prefix, range) : undefined]);
   return main.ok && alt ? { ...main, alt } : main;
+}
+
+// 일별 결제 건수(그래프용): 직전 기간 시작부터 기간 끝까지. 날짜 경계는 DASHBOARD_UTC_OFFSET_HOURS.
+// 그래프에서 '결제가 있었던 날' 표시에만 쓰며, 합계는 revenueSummary 가 기준이다.
+export type RevenueDays = { ok: true; source: "polar" | "supabase"; days: { date: string; orders: number }[]; truncated: boolean } | { ok: false; reason: string };
+
+const localDate = (t: number) => new Date(t + offsetMs()).toISOString().slice(0, 10);
+
+async function supabaseDates(prefix: string, since: Date, until: Date): Promise<{ ok: true; dates: number[]; truncated: boolean } | { ok: false; reason: string }> {
+  const url = (process.env[`${prefix}_SUPABASE_URL`] ?? "").replace(/\/+$/, "");
+  const key = process.env[`${prefix}_SUPABASE_READONLY_KEY`];
+  if (!url || !key) return { ok: false, reason: "자격증명 없음" };
+  const table = process.env[`${prefix}_PURCHASE_TABLE`] || "purchase";
+  const dateCol = process.env[`${prefix}_PURCHASE_DATE_COLUMN`] || "created_at";
+  if (![table, dateCol].every((s) => /^[A-Za-z0-9_]+$/.test(s))) return { ok: false, reason: "테이블·컬럼 이름 설정이 올바르지 않습니다" };
+  try {
+    const res = await fetch(`${url}/rest/v1/${table}?select=${dateCol}&${dateCol}=gte.${since.toISOString()}&${dateCol}=lt.${until.toISOString()}&order=${dateCol}.desc&limit=1000`, {
+      headers: { apikey: key, authorization: `Bearer ${key}` },
+      next: { revalidate: 600 },
+    });
+    if (!res.ok) return { ok: false, reason: "Supabase 조회 실패" };
+    const rows = (await res.json()) as Record<string, unknown>[];
+    return { ok: true, dates: rows.map((r) => Date.parse(String(r[dateCol] ?? ""))).filter((t) => !Number.isNaN(t)), truncated: rows.length >= 1000 };
+  } catch {
+    return { ok: false, reason: "Supabase 조회 실패(네트워크)" };
+  }
+}
+
+export async function revenueDays(brand: BrandId, range: DateRange): Promise<RevenueDays> {
+  const tokenEnv = POLAR_TOKEN_ENV[brand];
+  const prefix = SUPABASE_PREFIX[brand];
+  const { since, until } = rangeInstants({ from: range.prev.from, to: range.to });
+  let times: number[];
+  let source: "polar" | "supabase";
+  let truncated = false;
+  if (process.env[tokenEnv]) {
+    const r = await polarPaid(tokenEnv, since, until);
+    if (!r.ok) return r;
+    times = r.paid.map((o) => Date.parse(o.created_at ?? "")).filter((t) => !Number.isNaN(t));
+    source = "polar";
+    truncated = r.truncated;
+  } else if (hasSupabase(prefix)) {
+    const r = await supabaseDates(prefix, since, until);
+    if (!r.ok) return r;
+    times = r.dates;
+    source = "supabase";
+    truncated = r.truncated;
+  } else {
+    return { ok: false, reason: "자격증명 없음" };
+  }
+  const by = new Map<string, number>();
+  for (const t of times) by.set(localDate(t), (by.get(localDate(t)) ?? 0) + 1);
+  return { ok: true, source, days: [...by.entries()].map(([date, orders]) => ({ date, orders })).sort((a, b) => a.date.localeCompare(b.date)), truncated };
 }

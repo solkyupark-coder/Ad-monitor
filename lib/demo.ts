@@ -1,5 +1,6 @@
 // 화면 확인용 가짜 데이터. DASHBOARD_DEMO=1 일 때만 쓰이며, 화면에 '데모 데이터'라고 표시된다. 실제 수치가 아니다.
 import type { MetaCampaign, MetaSummary } from "@/lib/meta";
+import type { CampaignSeries } from "@/lib/events";
 import type { YoutubeSummary } from "@/lib/youtube";
 import { eachDay, type DateRange } from "@/lib/range";
 
@@ -14,6 +15,15 @@ const scaleCampaign = <T extends { spend: number; impressions: number; clicks: n
 
 // 직전 기간 + 조회 기간 날짜(비교용 일별 행).
 const demoDays = (r: DateRange) => eachDay(r.prev.from, r.to);
+
+// 데모: 캠페인별 일별 지출. 중지된 캠페인은 기간 중간에 지출이 끊기고, 새 캠페인은 중간에 시작한다(그래프의 세로선 확인용).
+function demoSeries(r: DateRange, days: { date: string; spend: number }[]): CampaignSeries[] {
+  const dates = days.map((d) => d.date);
+  const cut = r.prev.to ? dates.indexOf(r.to) - Math.max(2, Math.floor(r.days / 3)) : 0;
+  const start = dates.indexOf(r.to) - Math.max(1, Math.floor(r.days / 4));
+  const line = (name: string, state: "active" | "paused" | "removed", from: number, to: number): CampaignSeries => ({ name, state, days: dates.map((date, i) => ({ date, spend: i >= from && i <= to ? 3000 : 0 })) });
+  return [line("[데모] 브랜드 인지도", "paused", 0, cut), line("[데모] 신규 고객 · 트래픽", "active", 0, dates.length), line("[데모] 새 캠페인 (hc_demo)", "active", start, dates.length)];
+}
 
 export function demoMeta(r: DateRange): MetaSummary {
   const days = demoDays(r).map((date, i) => {
@@ -47,6 +57,7 @@ export function demoMeta(r: DateRange): MetaSummary {
     ],
     notes: [],
     moved: [],
+    series: demoSeries(r, days),
   };
 }
 
@@ -116,9 +127,15 @@ export function demoGa4(r: DateRange): Ga4Summary {
     geoCur: scale(geo, k),
     geoPrev: scale(geo, k * 0.85),
     geoTruncated: false,
+    daily: demoDays(r).map((date, i) => ({ date, users: Math.round(60 + 18 * Math.sin(i / 1.9) + (i >= r.days ? 10 : 0)) })),
     blocked: { sessions: Math.round(310 * k), users: Math.round(240 * k) },
     campaigns: campaigns.map((c) => ({ ...c, sessions: Math.round(c.sessions * k), engagedSessions: Math.round(c.engagedSessions * k), engagementSec: c.engagementSec * k })),
   });
+}
+
+// 데모: 일부 날에만 결제가 있다.
+export function demoRevenueDays(r: DateRange): { date: string; orders: number }[] {
+  return demoDays(r).flatMap((date, i) => (i % 9 === 4 ? [{ date, orders: 1 + (i % 2) }] : []));
 }
 
 export function demoRevenue(_r: DateRange): RevenueSummary {
@@ -136,6 +153,7 @@ export function demoAds(r: DateRange): GoogleAdsSummary {
     currency: "KRW",
     notes: [],
     moved: [],
+    series: [],
     days,
     campaigns: [
       { name: "[데모] 검색 · 브랜드", cost: 38000, clicks: 96, impressions: 2100, state: "active" as const },

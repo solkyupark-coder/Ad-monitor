@@ -3,6 +3,7 @@ import { BRANDS, type BrandId } from "@/lib/platforms";
 import { eachDay, type DateRange } from "@/lib/range";
 import { decide, hostsIn, loadRules, subtractDays, type MovedAd, type Rules } from "@/lib/attribution";
 import { metaState, type CampaignState } from "@/lib/campaign-state";
+import type { CampaignSeries } from "@/lib/events";
 
 export type MetaDay = { date: string; spend: number; impressions: number; clicks: number };
 export type MetaCampaign = {
@@ -30,7 +31,7 @@ export type MetaAccount = {
   reason?: string;
 };
 export type MetaSummary =
-  | { ok: true; accountName: string; currency: string; days: MetaDay[]; campaigns: MetaCampaign[]; accounts: MetaAccount[]; notes: string[]; moved: MovedAd[] }
+  | { ok: true; accountName: string; currency: string; days: MetaDay[]; campaigns: MetaCampaign[]; accounts: MetaAccount[]; notes: string[]; moved: MovedAd[]; series: CampaignSeries[] }
   | { ok: false; reason: string };
 
 export type MetaTotals = { spend: number; impressions: number; clicks: number; ctr: number; cpc: number; cpm: number };
@@ -152,22 +153,35 @@ async function fetchLinkHosts(token: string, account: string): Promise<Map<strin
   return out;
 }
 
-// 이 계정 캠페인 중 다른 브랜드 광고로 보이는 것과 그 일별 값. 일별은 옮겨질 캠페인만 따로 조회한다.
-async function findMoved(token: string, id: string, res: AcctOk, brand: BrandId, range: DateRange, rules: Rules): Promise<MovedAd[]> {
+// 캠페인별 일별 지출(직전 기간 시작부터 기간 끝까지). 그래프의 '켜고 끈 날짜'와 다른 브랜드로 옮길 캠페인의 일별 값에 쓴다.
+// 행이 많으면 paging.next 를 따라가되(최대 6쪽) 이 API 주소(graph.facebook.com)만 따라간다. 실패하면 빈 값 — 나머지 화면은 그대로.
+async function fetchCampaignDaily(token: string, account: string, ids: string[], range: DateRange): Promise<Map<string, MetaDay[]>> {
+  const out = new Map<string, MetaDay[]>();
+  if (!ids.length) return out;
+  const rows: Row[] = [];
+  try {
+    const filtering = encodeURIComponent(JSON.stringify([{ field: "campaign.id", operator: "IN", value: ids }]));
+    let url: string | undefined = `${API}/${account}/insights?fields=campaign_id,spend,impressions,clicks&level=campaign&time_increment=1&limit=500&filtering=${filtering}&time_range=${encodeURIComponent(JSON.stringify({ since: range.prev.from, until: range.to }))}`;
+    for (let page = 0; page < 6 && url; page++) {
+      const r: Response = await fetch(url, { headers: { authorization: `Bearer ${token}` }, next: { revalidate: 600 } });
+      if (!r.ok) break;
+      const body = (await r.json()) as { data?: Row[]; paging?: { next?: string } };
+      rows.push(...(body.data ?? []));
+      url = body.paging?.next && body.paging.next.startsWith(`${API}/`) ? body.paging.next : undefined;
+    }
+  } catch {
+    /* 일별을 못 읽으면 빈 값 */
+  }
+  for (const id of ids) out.set(id, fillDays(rows.filter((x) => x.campaign_id === id), range));
+  return out;
+}
+
+// 이 계정 캠페인 중 다른 브랜드 광고로 보이는 것과 그 일별 값(daily 는 위에서 읽은 캠페인별 일별).
+async function findMoved(token: string, id: string, res: AcctOk, brand: BrandId, range: DateRange, rules: Rules, daily: Map<string, MetaDay[]>): Promise<MovedAd[]> {
   const links = rules.links.length ? await fetchLinkHosts(token, id) : new Map<string, string[]>();
   const picks = res.campaigns
     .map((r) => ({ r, d: r.campaign_id ? decide(rules, brand, r.campaign_name ?? "", links.get(r.campaign_id) ?? []) : null }))
     .filter((x): x is { r: Row & { status?: string; state?: CampaignState }; d: { to: BrandId; why: string } } => !!x.d);
-  if (!picks.length) return [];
-  const ids = picks.map((x) => x.r.campaign_id as string);
-  let rows: Row[] = [];
-  try {
-    const filtering = encodeURIComponent(JSON.stringify([{ field: "campaign.id", operator: "IN", value: ids }]));
-    const r = await fetch(`${API}/${id}/insights?fields=campaign_id,spend,impressions,clicks&level=campaign&time_increment=1&limit=1000&filtering=${filtering}&time_range=${encodeURIComponent(JSON.stringify({ since: range.prev.from, until: range.to }))}`, { headers: { authorization: `Bearer ${token}` }, next: { revalidate: 600 } });
-    if (r.ok) rows = ((await r.json()) as { data?: Row[] }).data ?? [];
-  } catch {
-    /* 일별을 못 읽으면 아래에서 캠페인 합계만으로 처리한다 */
-  }
   return picks.map(({ r, d }) => ({
     source: "meta" as const,
     from: brand,
@@ -181,7 +195,7 @@ async function findMoved(token: string, id: string, res: AcctOk, brand: BrandId,
     status: r.status,
     state: r.state,
     why: d.why,
-    days: fillDays(rows.filter((x) => x.campaign_id === r.campaign_id), range),
+    days: daily.get(r.campaign_id as string) ?? fillDays([], range),
   }));
 }
 
@@ -275,7 +289,8 @@ export async function metaSummary(brand: BrandId, range: DateRange): Promise<Met
 
   // 다른 브랜드 광고로 보이는 캠페인(예: Houscaper 계정에서 결제한 Topogenesis 부스트)은 이 브랜드 합계에서 빼고 따로 들고 간다.
   const rules = loadRules();
-  const movedBy = await Promise.all(included.map(({ id, res }) => findMoved(token, id, res, brand, range, rules)));
+  const dailyBy = await Promise.all(included.map(({ id, res }) => fetchCampaignDaily(token, id, res.campaigns.map((c) => c.campaign_id).filter((x): x is string => !!x), range)));
+  const movedBy = await Promise.all(included.map(({ id, res }, i) => findMoved(token, id, res, brand, range, rules, dailyBy[i])));
   const moved = movedBy.flat();
   if (moved.length) {
     const byTo = new Map<string, number>();
@@ -285,6 +300,11 @@ export async function metaSummary(brand: BrandId, range: DateRange): Promise<Met
   included.forEach((inc, i) => {
     if (movedBy[i].length) inc.res = { ...inc.res, days: subtractDays(inc.res.days, movedBy[i].map((m) => m.days)), campaigns: inc.res.campaigns.filter((c) => !movedBy[i].some((m) => m.name === (c.campaign_name ?? "(이름 없음)"))) };
   });
+
+  // 그래프의 '켜고 끈 날짜' 추정에 쓰는 캠페인별 일별 지출(옮겨 간 캠페인은 받는 브랜드가 가져간다).
+  const series: CampaignSeries[] = included.flatMap(({ res }, i) =>
+    res.campaigns.map((c) => ({ name: c.campaign_name ?? "(이름 없음)", state: c.state, days: (dailyBy[i].get(c.campaign_id as string) ?? []).map((d) => ({ date: d.date, spend: d.spend })) })),
+  );
 
   // 같은 날짜끼리 합친다(모든 계정이 같은 날짜 목록을 가진다).
   const byDate = new Map<string, MetaDay>();
@@ -321,5 +341,5 @@ export async function metaSummary(brand: BrandId, range: DateRange): Promise<Met
   if (!anySpend && !campaigns.length && !extra.length && !business) {
     notes.push(`이 기간 Ads Manager 계정(${main})에 광고가 없습니다. 인스타그램 프로모션(부스트)은 다른 광고 계정에 있을 수 있어요 — ${prefix}_META_BUSINESS_ID(자동 탐색) 또는 ${prefix}_META_EXTRA_AD_ACCOUNT_IDS(직접 지정)를 설정하세요.`);
   }
-  return { ok: true, accountName: included.map((i) => i.res.name || i.id).join(" · "), currency: baseCurrency, days, campaigns, accounts, notes, moved };
+  return { ok: true, accountName: included.map((i) => i.res.name || i.id).join(" · "), currency: baseCurrency, days, campaigns, accounts, notes, moved, series };
 }

@@ -119,7 +119,7 @@ export const OPTIONAL_ENV = [
   "{BRAND}_META_EXTRA_AD_ACCOUNT_IDS", // 추가로 읽을 광고 계정 ID(쉼표 구분, 숫자 또는 act_숫자)
   "REFERRER_BLOCKLIST", // 리워드·클릭팜(PTC) 유입 차단 도메인을 더 추가(쉼표 구분, 두 브랜드 공통). 기본 목록은 lib/blocklist.ts
   "{BRAND}_REFERRER_BLOCKLIST", // 위와 같은 용도, 그 브랜드만
-  "REFERRER_BLOCK_PATTERNS", // PTC 이름 패턴 추가(rupee·2pay·2click·paid4·earn 은 기본 포함, 쉼표 구분)
+  "REFERRER_BLOCK_PATTERNS", // PTC 이름 패턴 추가(rupee·2pay·2click·paid4·earn·cashtree 등 국내 리워드 앱 이름은 기본 포함, 쉼표 구분)
   "REFERRER_ALLOWLIST", // 패턴에 잘못 걸린 정상 도메인을 풀어 줌
   "AD_REASSIGN_RULES", // 다른 브랜드 광고로 옮길 이름 규칙: "패턴=>브랜드; …" (기본: 이름에 topo → topogenesis)
   "AD_REASSIGN_LINK_HOSTS", // 링크 도메인 규칙: "도메인=>브랜드; …" (기본: topogenesis.xyz)

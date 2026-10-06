@@ -16,6 +16,11 @@ export const DEFAULT_BLOCKED_REFERRERS = [
   "ruppemine.com",
   "paid4ad.com",
   "adsrupee.com",
+  // 국내 리워드(앱테크) 앱 — 앱 안 광고·포인트 보상으로 들어온 클릭
+  "cashtree.co",
+  "cashwalk.com",
+  "cashslide.co.kr",
+  "adpopcorn.com",
   // 대표적인 PTC(클릭하면 돈 주는) 사이트
   "neobux.com",
   "clixsense.com",
@@ -46,7 +51,8 @@ export function parseDomains(raw: string | undefined | null): string[] {
 
 // 이름 패턴(정규식 조각 — JS 와 GA4(RE2) 양쪽에서 같은 뜻이어야 해서 lookbehind 같은 건 쓰지 않는다).
 // earn 은 learn·yearn 같은 흔한 단어를 피하려고 앞 글자가 l·y 가 아닐 때만 건다.
-export const DEFAULT_BLOCKED_PATTERNS = ["rupee", "2pay", "2click", "paid4", "(^|[^ly])earn"];
+// 'cash' 는 cashew·cashier·cashback 같은 흔한 말이 많아 통째로 걸지 않고, 알려진 리워드 앱 이름이 붙은 것만 건다(오탐 방지).
+export const DEFAULT_BLOCKED_PATTERNS = ["rupee", "2pay", "2click", "paid4", "(^|[^ly])earn", "cash(tree|walk|slide|that|mong|hour|doc|charge)", "adpopcorn"];
 
 export type Blocklist = { domains: string[]; patterns: string[]; allow: string[] };
 

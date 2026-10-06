@@ -91,6 +91,7 @@ cashlee.co, ad2click.co 같은 "클릭하면 돈 주는" 사이트에서 오는 
 - **Vercel**: "유입 사이트" 목록에서 빼고, 그 방문을 일별 방문자·페이지뷰에서도 뺀다. 제외량은 유입 사이트 아래에 보인다. 일별 차감 조회가 실패하면 "일별 방문자에는 반영하지 못함"이라고 표시한다.
 - **확장**: 기본 목록(`DEFAULT_BLOCKED_REFERRERS`)에 도메인을 추가하거나, 코드 수정 없이 env로 더한다 — `REFERRER_BLOCKLIST=a.com,b.net`(공통), `HOUSCAPER_REFERRER_BLOCKLIST` / `TOPOGENESIS_REFERRER_BLOCKLIST`(브랜드별). 도메인만 적는다(`https://`·`www.` 는 알아서 정리, `notcashlee.co`처럼 이름만 비슷한 도메인은 걸리지 않음).
 - **이름 패턴**: 도메인 목록에 없어도 호스트 이름에 `rupee`·`2pay`·`2click`·`paid4`·`earn`이 있으면 PTC로 본다(`adsrupee.com`은 목록에도 있다). `earn`은 `learn.microsoft.com`·`yearn…` 같은 정상 단어를 피하려고 앞 글자가 `l`·`y`가 아닐 때만 건다(그래서 `easyearn…`은 못 잡는다 — 그런 건 도메인으로 `REFERRER_BLOCKLIST`에 추가). 패턴 추가: `REFERRER_BLOCK_PATTERNS=freecash,gpt4`(영문·숫자·`-`, 3~30자). 잘못 걸린 정상 도메인은 `REFERRER_ALLOWLIST=a.example.com`으로 풀어 준다(차단보다 우선).
+- **국내 리워드(앱테크) 앱**: `cashtree.co`·`cashwalk.com`·`cashslide.co.kr`·`adpopcorn.com`을 목록에 넣었고, 이름 패턴으로 `cashtree`·`cashwalk`·`cashslide`·`cashthat`·`cashmong`·`cashhour`·`cashdoc`·`cashcharge`·`adpopcorn`도 건다. `cash` 전체를 거는 패턴은 `cashew`·`cashier`·`cashback` 같은 정상 단어를 잡으므로 쓰지 않았다. 토스(`toss.im`)는 리워드 전용 주소를 확인하지 못했고 통째로 막으면 일반 토스 유입까지 사라지므로 기본 목록에 넣지 않았다 — 원하면 `REFERRER_BLOCKLIST=toss.im`으로 추가한다. 다른 앱(캐시댓 등)은 같은 방식으로 `REFERRER_BLOCKLIST`·`REFERRER_BLOCK_PATTERNS`에 더한다.
 - **한계**: 리퍼러를 숨기는 PTC 트래픽(소스가 `(direct)`로 찍힘)은 도메인으로 가려낼 수 없다. 그런 경우는 기존 "의심 트래픽"(데이터센터 도시·참여 5초 미만) 판정이 따로 걸러 준다. Vercel 일별 차감은 선택 기간 상위 100개 유입 도메인 안에서만 찾는다.
 
 ## 구글 광고: 관리자(MCC) 로그인 ID와 `USER_PERMISSION_DENIED`

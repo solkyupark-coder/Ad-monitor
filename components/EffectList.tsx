@@ -52,6 +52,16 @@ export function EffectList({ rows }: { rows: EffectRow[] }) {
                 <span><i>참여율</i>{pct(r.engagementRate)}</span>
                 <span><i>참여 1회당</i>{money(r.costPerEngaged, r.currency)}</span>
               </div>
+              {r.channel === "meta" && !r.residual && r.clicks > 0 && (
+                <p className="fx-flow" title="링크 클릭(메타) → 랜딩 페이지 조회(메타) → GA4 세션. 단계마다 줄어드는 만큼 사람이 빠져나간 곳입니다.">
+                  <span><i>링크 클릭</i>{r.linkClicks ?? r.clicks}</span>
+                  <b aria-hidden="true">→</b>
+                  <span><i>랜딩 조회</i>{r.landingViews !== undefined ? `${r.landingViews}${r.landingViewRate != null ? ` (${pct(r.landingViewRate)})` : ""}` : "메타가 안 줌"}</span>
+                  <b aria-hidden="true">→</b>
+                  <span><i>GA 세션</i>{r.sessions}{r.landingViews ? ` (${pct(r.sessions / r.landingViews)})` : ""}</span>
+                  <em>클릭 대비 도착 {pct(r.arriveRate ?? null)}</em>
+                </p>
+              )}
               {r.paidBy && <p className="fine">{r.paidBy}</p>}
               <p className="fx-why">{r.why}</p>
             </li>

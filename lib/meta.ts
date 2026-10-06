@@ -16,6 +16,8 @@ export type MetaCampaign = {
   status?: string; // 메타 effective_status (ACTIVE, PAUSED …)
   state?: CampaignState; // 집행 중 / 중지됨 / 삭제됨 — 캠페인·광고 상태로 정한다(부스트 포함)
   promo?: boolean; // 인스타·페이스북 프로모션(부스트)로 보이는 캠페인
+  linkClicks?: number; // 링크 클릭(inline_link_clicks) — 전체 클릭(하트·프로필 등 포함)과 다르다
+  landingViews?: number; // 랜딩 페이지 조회(landing_page_view) — 링크를 누른 사람 중 페이지가 실제로 열린 수. 메타가 안 주면 undefined(픽셀·최적화 목표 확인)
   paidBy?: string; // 다른 브랜드 광고 계정에서 결제돼 이 브랜드로 옮겨 온 캠페인이면 그 표시(예: "Houscaper 계정에서 결제됨")
   orig?: string; // 통화가 달라 환산했으면 원통화 금액 표기(예: "원통화 16,286원")
 };
@@ -41,7 +43,13 @@ export type MetaTotals = { spend: number; impressions: number; clicks: number; c
 const API = "https://graph.facebook.com/v21.0";
 
 type GraphError = { error?: { code?: number } };
-type Row = { date_start?: string; campaign_id?: string; campaign_name?: string; spend?: string; impressions?: string; clicks?: string };
+type Row = { date_start?: string; campaign_id?: string; campaign_name?: string; spend?: string; impressions?: string; clicks?: string; inline_link_clicks?: string; actions?: { action_type?: string; value?: string }[] };
+
+// 랜딩 페이지 조회 수. 메타가 그 행동을 주지 않았으면 undefined(0과 구분 — 픽셀이 없으면 안 온다).
+export const landingViewsOf = (r: Row): number | undefined => {
+  const a = r.actions?.find((x) => x.action_type === "landing_page_view");
+  return a ? Number(a.value ?? 0) : undefined;
+};
 
 export function totals(days: MetaDay[]): MetaTotals {
   const spend = days.reduce((a, d) => a + d.spend, 0);
@@ -111,7 +119,7 @@ async function fetchAccount(token: string, account: string, range: DateRange): P
     const [infoRes, dayRes, campRes, statusRes, adsRes] = await Promise.all([
       get("?fields=name,currency"),
       get(`/insights?fields=spend,impressions,clicks&time_increment=1&limit=1000&time_range=${enc({ since: range.prev.from, until: range.to })}`),
-      get(`/insights?fields=campaign_id,campaign_name,spend,impressions,clicks&level=campaign&limit=50&time_range=${enc({ since: range.from, until: range.to })}`),
+      get(`/insights?fields=campaign_id,campaign_name,spend,impressions,clicks,inline_link_clicks,actions&level=campaign&limit=50&time_range=${enc({ since: range.from, until: range.to })}`),
       get(`/campaigns?fields=id,effective_status,configured_status&limit=500&effective_status=${enc(CAMPAIGN_STATUSES)}`),
       get(`/ads?fields=campaign_id,effective_status&limit=500&effective_status=${enc(AD_STATUSES)}`),
     ]);
@@ -237,6 +245,8 @@ async function findMoved(token: string, id: string, res: AcctOk, brand: BrandId,
     spend: Number(r.spend ?? 0),
     impressions: Number(r.impressions ?? 0),
     clicks: Number(r.clicks ?? 0),
+    linkClicks: r.inline_link_clicks !== undefined ? Number(r.inline_link_clicks) : undefined,
+    landingViews: landingViewsOf(r),
     status: r.status,
     state: r.state,
     why: d.why,
@@ -383,6 +393,8 @@ export async function metaSummary(brand: BrandId, range: DateRange): Promise<Met
           spend: Number(r.spend ?? 0),
           impressions: Number(r.impressions ?? 0),
           clicks: Number(r.clicks ?? 0),
+          linkClicks: r.inline_link_clicks !== undefined ? Number(r.inline_link_clicks) : undefined,
+          landingViews: landingViewsOf(r),
           account: multi ? res.name || id : undefined,
           status: r.status,
           state: r.state,

@@ -144,6 +144,7 @@ function MetaPanel({ m, range }: { m: MetaSummary; range: DateRange }) {
                   <th>지출</th>
                   <th className="num">노출</th>
                   <th className="num">클릭</th>
+                  <th className="num" title="링크를 누른 뒤 랜딩 페이지가 실제로 열린 수(메타 landing_page_view). 메타가 안 주면 -">랜딩 조회</th>
                   <th className="num">CTR</th>
                 </tr>
               </thead>
@@ -177,6 +178,7 @@ function MetaPanel({ m, range }: { m: MetaSummary; range: DateRange }) {
                     </td>
                     <td className="num">{fmtCompact(c.impressions)}</td>
                     <td className="num">{fmtCompact(c.clicks)}</td>
+                    <td className="num" title={c.linkClicks !== undefined ? `링크 클릭 ${c.linkClicks}` : undefined}>{c.landingViews !== undefined ? fmtCompact(c.landingViews) : "-"}</td>
                     <td className="num">{c.impressions ? `${((c.clicks / c.impressions) * 100).toFixed(2)}%` : "-"}</td>
                   </tr>
                   );

@@ -26,6 +26,8 @@ export type MovedAd = {
   spend: number;
   impressions: number;
   clicks: number;
+  linkClicks?: number;
+  landingViews?: number;
   status?: string;
   state?: CampaignState; // 집행 중 / 중지됨 / 삭제됨(API 상태 기준)
   why: string; // 옮긴 이유(이름 규칙 / 링크 규칙)

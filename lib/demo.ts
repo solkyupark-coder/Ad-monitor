@@ -11,6 +11,8 @@ const scaleCampaign = <T extends { spend: number; impressions: number; clicks: n
   spend: Math.round(c.spend * k),
   impressions: Math.round(c.impressions * k),
   clicks: Math.round(c.clicks * k),
+  ...("linkClicks" in c ? { linkClicks: Math.round(((c as { linkClicks?: number }).linkClicks ?? 0) * k) } : {}),
+  ...("landingViews" in c ? { landingViews: Math.round(((c as { landingViews?: number }).landingViews ?? 0) * k) } : {}),
 });
 
 // 직전 기간 + 조회 기간 날짜(비교용 일별 행).
@@ -49,8 +51,8 @@ export function demoMeta(r: DateRange): MetaSummary {
     currency: "KRW",
     days,
     campaigns: [
-      { name: "[데모] 신규 고객 · 트래픽", spend: 21000, impressions: 8200, clicks: 410, status: "ACTIVE", state: "active" as const },
-      { name: "[데모] 리타겟팅 · 전환", spend: 11800, impressions: 5100, clicks: 260, status: "ACTIVE", state: "active" as const },
+      { name: "[데모] 신규 고객 · 트래픽", spend: 21000, impressions: 8200, clicks: 410, linkClicks: 330, landingViews: 210, status: "ACTIVE", state: "active" as const },
+      { name: "[데모] 리타겟팅 · 전환", spend: 11800, impressions: 5100, clicks: 260, linkClicks: 190, landingViews: 150, status: "ACTIVE", state: "active" as const },
       { name: "[데모] 브랜드 인지도", spend: 6300, impressions: 3200, clicks: 130, status: "PAUSED", state: "paused" as const },
       { name: "[데모] 시즌 프로모션", spend: 1980, impressions: 572, clicks: 29, status: "DELETED", state: "removed" as const },
     ].map((c): MetaCampaign => scaleCampaign(c, r.days / 7)).concat([

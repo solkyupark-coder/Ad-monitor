@@ -75,7 +75,7 @@ export async function loadDashboard(brand: BrandId, range: DateRange, skip: { yo
     today: range.today,
   });
   const effect = buildEffect({
-    meta: meta && meta.ok ? { currency: meta.currency, campaigns: meta.campaigns.map((c) => ({ name: c.name, spend: c.spend, impressions: c.impressions, clicks: c.clicks, state: c.state, paidBy: c.paidBy })), total: sumTotals(meta.days.slice(-range.days), (d) => d.spend) } : null,
+    meta: meta && meta.ok ? { currency: meta.currency, campaigns: meta.campaigns.map((c) => ({ name: c.name, spend: c.spend, impressions: c.impressions, clicks: c.clicks, linkClicks: c.linkClicks, landingViews: c.landingViews, state: c.state, paidBy: c.paidBy })), total: sumTotals(meta.days.slice(-range.days), (d) => d.spend) } : null,
     ads: ads && ads.ok ? { currency: ads.currency, campaigns: ads.campaigns.map((c) => ({ name: c.name, spend: c.cost, impressions: c.impressions, clicks: c.clicks, state: c.state, paidBy: c.paidBy })), total: sumTotals(ads.days.slice(-range.days), (d) => d.cost) } : null,
     gaCampaigns: ga && ga.ok ? ga.campaigns : null,
     gaTruncated: ga && ga.ok ? ga.campaignsTruncated : false,

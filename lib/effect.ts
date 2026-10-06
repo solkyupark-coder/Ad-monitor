@@ -8,7 +8,7 @@ import { isStopped, type CampaignState } from "@/lib/campaign-state";
 export type Channel = "meta" | "google";
 export type Verdict = "good" | "warn" | "bad" | "hold";
 
-export type AdCampaignIn = { name: string; spend: number; impressions: number; clicks: number; state?: CampaignState; paidBy?: string };
+export type AdCampaignIn = { name: string; spend: number; impressions: number; clicks: number; linkClicks?: number; landingViews?: number; state?: CampaignState; paidBy?: string };
 export type GaCampaignRow = { campaign: string; sourceMedium: string; sessions: number; engagedSessions: number; engagementSec: number };
 
 export type EffectRow = {
@@ -24,6 +24,10 @@ export type EffectRow = {
   engagementRate: number | null;
   costPerEngaged: number | null;
   landingRate: number | null; // 세션 / 클릭 — 낮으면 클릭이 사이트에 안 닿음
+  linkClicks?: number; // 메타 캠페인만: 링크 클릭
+  landingViews?: number; // 메타 캠페인만: 랜딩 페이지 조회(메타가 안 주면 없음)
+  landingViewRate?: number | null; // 랜딩 조회 / 링크 클릭 — 낮으면 누른 뒤 페이지가 안 열림(느림·이탈)
+  arriveRate?: number | null; // GA 세션 / 링크 클릭(없으면 전체 클릭) — 클릭이 GA4 세션으로 도착한 비율
   verdict: Verdict;
   why: string;
   state?: CampaignState; // 집행 중 / 중지됨 / 삭제됨 (캠페인 행만)
@@ -117,7 +121,9 @@ export function buildEffect(input: { meta: ChannelIn; ads: ChannelIn; gaCampaign
   const sides: Side[] = [];
   if (input.meta) sides.push({ channel: "meta", label: "메타", ...input.meta });
   if (input.ads) sides.push({ channel: "google", label: "구글 광고", ...input.ads });
-  const currencies = [...new Set(sides.map((s) => s.currency))];
+  // 지출이 0인 채널의 통화는 무시한다(그 채널은 견줄 비용이 없다).
+  const spentSides = sides.filter((s) => (s.total?.spend ?? s.campaigns.reduce((a, c) => a + c.spend, 0)) > 0);
+  const currencies = [...new Set((spentSides.length ? spentSides : sides).map((s) => s.currency))];
   const mixedCurrency = currencies.length > 1;
   if (mixedCurrency) notes.push(`채널 통화가 달라(${currencies.join(", ")}) 채널끼리 비용을 견주지 않고, 가장 효과적·낭비 의심 요약도 만들지 않습니다.`);
   if (input.gaTruncated) notes.push("GA4 캠페인 행이 많아 일부만 읽었습니다 — 방문이 적은 캠페인은 보류로 보일 수 있습니다.");
@@ -147,6 +153,7 @@ export function buildEffect(input: { meta: ChannelIn; ads: ChannelIn; gaCampaign
         engagementRate: sessions ? engaged / sessions : null,
         costPerEngaged: engaged ? c.spend / engaged : null,
         landingRate: c.clicks ? sessions / c.clicks : null,
+        ...(side.channel === "meta" ? { linkClicks: c.linkClicks, landingViews: c.landingViews, landingViewRate: c.linkClicks && c.landingViews !== undefined ? c.landingViews / c.linkClicks : null, arriveRate: (c.linkClicks ?? c.clicks) ? sessions / (c.linkClicks ?? c.clicks) : null } : {}),
         verdict: "hold", why: "", state: c.state, paidBy: c.paidBy,
         unmatched: !named, ambiguous, crossNetwork,
       });

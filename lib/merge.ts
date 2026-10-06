@@ -70,7 +70,7 @@ export function mergeMetaMoved(view: BrandId, own: MetaSummary | null, others: (
   notes.push(`다른 브랜드 계정에서 결제된 이 브랜드 광고 ${use.length}개를 합쳤습니다.`);
   if (converted.length) notes.push(convNote(converted, currency));
   if (skipped.length) notes.push(`통화가 달라(${currency}) 환율을 몰라 합치지 못한 캠페인 ${skipped.length}개: ${skipped.map((m) => `${m.name}(${m.currency})`).join(", ")} — FX_RATES로 환율을 추가하세요.`);
-  const add: MetaCampaign[] = use.map((m) => ({ name: m.name, spend: m.spend, impressions: m.impressions, clicks: m.clicks, account: m.account, status: m.status, state: m.state, promo: true, paidBy: paidByLabel(m.from), orig: m.orig }));
+  const add: MetaCampaign[] = use.map((m) => ({ name: m.name, spend: m.spend, impressions: m.impressions, clicks: m.clicks, linkClicks: m.linkClicks, landingViews: m.landingViews, account: m.account, status: m.status, state: m.state, promo: true, paidBy: paidByLabel(m.from), orig: m.orig }));
   const campaigns = [...(keepBase ? baseOk.campaigns : []), ...add].sort((a, b) => b.spend - a.spend);
   return {
     ok: true,

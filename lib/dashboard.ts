@@ -62,7 +62,7 @@ export async function loadDashboard(brand: BrandId, range: DateRange, skip: { yo
   const otherOn = (st: PlatformStatus[], id: PlatformId) => !demo && !!st.find((s) => s.platform.id === id)?.connected;
   const [metaRaw, yt, ga, rev, adsRaw, vc, otherMeta, otherAds, revDays, signups] = await Promise.all([
     isOn("meta") ? (demo ? demoMeta(range) : metaSummary(brand, range)) : null,
-    isOn("youtube") && !skip.youtube ? (demo ? demoYoutube() : youtubeSummary(brand)) : null,
+    isOn("youtube") && !skip.youtube ? (demo ? demoYoutube(range) : youtubeSummary(brand, range)) : null,
     isOn("ga4") ? (demo ? demoGa4(range) : ga4Summary(brand, range)) : null,
     isOn("revenue") ? (demo ? demoRevenue(range) : revenueSummary(brand, range)) : null,
     isOn("google_ads") ? (demo ? demoAds(range) : googleAdsSummary(brand, range)) : null,

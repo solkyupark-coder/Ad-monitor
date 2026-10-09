@@ -1,7 +1,7 @@
 // 화면 확인용 가짜 데이터. DASHBOARD_DEMO=1 일 때만 쓰이며, 화면에 '데모 데이터'라고 표시된다. 실제 수치가 아니다.
 import type { MetaCampaign, MetaSummary } from "@/lib/meta";
 import type { CampaignSeries } from "@/lib/events";
-import type { YoutubeSummary } from "@/lib/youtube";
+import { periodOf, type YoutubeAnalytics, type YoutubeSummary } from "@/lib/youtube";
 import { eachDay, type DateRange } from "@/lib/range";
 
 export const demoOn = () => process.env.DASHBOARD_DEMO === "1";
@@ -70,7 +70,7 @@ export function demoMeta(r: DateRange): MetaSummary {
   };
 }
 
-export function demoYoutube(): YoutubeSummary {
+export function demoYoutube(r?: DateRange): YoutubeSummary {
   const t = ["Canal houses: design on screen", "Modern villa inspired by Villa Savoye", "Hanok house: cut it in MDF", "직접 도면을 뽑아 만들어보세요", "Stack blocks like building a house"];
   const v = [15, 112, 306, 5, 13];
   return {
@@ -87,6 +87,29 @@ export function demoYoutube(): YoutubeSummary {
       comments: Math.round(v[i] / 40),
       publishedAt: new Date(Date.UTC(2026, 8, 30 - i * 4)).toISOString(),
     })),
+    analytics: r ? demoYoutubeAnalytics(r, t) : null,
+  };
+}
+
+function demoYoutubeAnalytics(r: DateRange, titles: string[]): YoutubeAnalytics {
+  const all = eachDay(r.prev.from, r.to).map((date, i) => {
+    const views = Math.max(0, Math.round(14 + 8 * Math.sin(i / 2.3) + (i % 7 === 5 ? 9 : 0)));
+    return { date, views, minutes: Math.round(views * 1.6), subsGained: i % 4 === 0 ? 1 : 0, subsLost: i % 11 === 0 ? 1 : 0 };
+  });
+  const days = all.slice(-r.days);
+  const cur = periodOf(days, { likes: Math.round(days.length * 1.4), comments: Math.round(days.length / 5), shares: Math.round(days.length / 4) });
+  const total = cur.views;
+  const share = [0.46, 0.27, 0.15, 0.08, 0.04];
+  return {
+    ok: true,
+    days,
+    cur,
+    prev: r.today ? null : periodOf(all.slice(0, -r.days)),
+    top: titles.map((title, i) => {
+      const views = Math.round(total * share[i]);
+      return { id: `d${i}`, title: `[데모] ${title}`, views, minutes: Math.round(views * (1.2 + i * 0.2)), avgViewSec: Math.round(72 + i * 12) };
+    }),
+    lastDate: days.length ? days[days.length - 1].date : null,
   };
 }
 

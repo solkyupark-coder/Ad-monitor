@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 import { BRANDS } from "@/lib/platforms";
 import { esc, oauthPage, tokenBox } from "@/lib/oauth-page";
 import { isBrand } from "@/lib/reddit-oauth";
-import { exchangeGoogleCode, mineChannel, YOUTUBE_SCOPE, YOUTUBE_STATE_COOKIE, youtubeRedirectUri } from "@/lib/youtube-oauth";
+import { exchangeGoogleCode, mineChannel, YOUTUBE_ANALYTICS_SCOPE, YOUTUBE_SCOPES, YOUTUBE_STATE_COOKIE, youtubeRedirectUri } from "@/lib/youtube-oauth";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +35,9 @@ export async function GET(req: NextRequest) {
     notes.push(`<li class="ok">채널 확인: ${esc(channel.title)} (${esc(channel.id)})</li>`);
   }
   const scopes = r.scope.split(/\s+/).filter(Boolean);
-  if (scopes.length === 1 && scopes[0] === YOUTUBE_SCOPE) notes.push(`<li class="ok">권한: youtube.readonly 하나(읽기 전용)</li>`);
+  const extra = scopes.filter((x) => !YOUTUBE_SCOPES.includes(x));
+  if (!scopes.includes(YOUTUBE_ANALYTICS_SCOPE)) notes.push(`<li class="warn">분석 권한(yt-analytics.readonly)이 빠졌습니다. 동의 화면에서 모든 항목에 체크하고 다시 연결해야 기간별 조회수·시청 시간이 보입니다.</li>`);
+  if (!extra.length) notes.push(`<li class="ok">권한: ${scopes.map((x) => esc(x.split("/").pop() ?? x)).join(", ")} (읽기 전용)</li>`);
   else notes.push(`<li class="warn">권한이 읽기 전용보다 넓습니다: <code>${esc(r.scope)}</code>. myaccount.google.com/permissions 에서 이 앱 권한을 지운 뒤 다시 연결하면 읽기 전용만 받습니다.</li>`);
   if (r.refreshExpiresInSec) {
     const days = Math.round(r.refreshExpiresInSec / 86400);

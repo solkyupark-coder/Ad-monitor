@@ -37,7 +37,7 @@ export const PLATFORMS: PlatformDef[] = [
     label: "유튜브",
     shared: ["GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET"],
     perBrand: ["YOUTUBE_REFRESH_TOKEN", "YOUTUBE_CHANNEL_ID"],
-    note: "채널마다 로그인 동의가 필요(브랜드 채널은 브랜드 계정으로 선택). refresh token은 '유튜브 연결하기'로 발급(youtube.readonly, 1회 표시).",
+    note: "채널마다 로그인 동의가 필요(브랜드 채널은 브랜드 계정으로 선택). refresh token은 '유튜브 연결하기'로 발급(youtube.readonly + yt-analytics.readonly, 1회 표시). 기간별 지표는 YouTube Analytics API 사용 설정 필요.",
   },
   {
     id: "ga4",

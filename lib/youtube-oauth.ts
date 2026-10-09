@@ -2,6 +2,8 @@
 // 토큰 값은 로그에 남기지 않는다. 구글 OAuth 클라이언트(GOOGLE_OAUTH_CLIENT_ID/SECRET)를 쓴다.
 export const YOUTUBE_STATE_COOKIE = "adm_youtube_oauth";
 export const YOUTUBE_SCOPE = "https://www.googleapis.com/auth/youtube.readonly";
+export const YOUTUBE_ANALYTICS_SCOPE = "https://www.googleapis.com/auth/yt-analytics.readonly";
+export const YOUTUBE_SCOPES = [YOUTUBE_SCOPE, YOUTUBE_ANALYTICS_SCOPE];
 
 // 구글 클라이언트의 '승인된 리디렉션 URI'에 정확히 등록돼 있어야 한다.
 export function youtubeRedirectUri(origin: string): string {
@@ -13,7 +15,7 @@ export function googleAuthorizeUrl(state: string, redirectUri: string): string {
     client_id: process.env.GOOGLE_OAUTH_CLIENT_ID ?? "",
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: YOUTUBE_SCOPE, // 읽기 전용 하나만. include_granted_scopes는 보내지 않아 예전 넓은 권한이 합쳐지지 않게 한다
+    scope: YOUTUBE_SCOPES.join(" "), // 읽기 전용 두 개(채널 현황 + 기간별 분석). include_granted_scopes는 보내지 않아 예전 넓은 권한이 합쳐지지 않게 한다
     access_type: "offline", // refresh token 받기
     prompt: "select_account consent", // 브랜드 채널 계정을 고를 수 있게, 매번 refresh token을 새로 받게
     state,

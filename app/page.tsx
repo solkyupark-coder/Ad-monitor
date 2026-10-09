@@ -1,6 +1,6 @@
 import { BRANDS, type BrandId } from "@/lib/platforms";
 import { periodSplit, type MetaAccountRole, type MetaSummary } from "@/lib/meta";
-import type { YoutubeSummary } from "@/lib/youtube";
+import type { YoutubeAnalytics, YoutubeSummary } from "@/lib/youtube";
 import { fmtCompact, fmtDate, fmtValue } from "@/lib/format";
 import { TrendChart } from "@/components/TrendChart";
 import { BarList, Delta, Stat } from "@/components/ui";
@@ -192,7 +192,100 @@ function MetaPanel({ m, range }: { m: MetaSummary; range: DateRange }) {
   );
 }
 
-function YoutubePanel({ y, brand }: { y: YoutubeSummary; brand: BrandId }) {
+const fmtHours = (min: number) => `${min < 600 ? (min / 60).toFixed(1) : fmtValue(min / 60, "count")}시간`;
+const fmtDur = (sec: number) => `${Math.floor(sec / 60)}분 ${String(Math.round(sec % 60)).padStart(2, "0")}초`;
+
+function YoutubeAnalyticsBlock({ a, brand, range }: { a: YoutubeAnalytics; brand: BrandId; range: DateRange }) {
+  if (!a.ok) {
+    return (
+      <>
+        <h3>기간별 지표</h3>
+        <p className="note">{a.reason}</p>
+        {a.reconnect && (
+          <p>
+            <a className="connect" href={`/api/youtube/connect?brand=${brand}`}>
+              유튜브 다시 연결
+            </a>
+            <span className="fine"> 분석 권한을 포함해 새 refresh token을 한 번 보여 줍니다.</span>
+          </p>
+        )}
+      </>
+    );
+  }
+  const { cur, prev } = a;
+  const lag = a.lastDate && a.lastDate < range.to ? `유튜브 분석은 ${fmtDate(a.lastDate)}까지 반영됨(보통 2~3일 늦음)` : a.lastDate ? "" : "이 기간 분석 수치가 아직 없습니다(보통 2~3일 늦게 반영)";
+  const maxViews = Math.max(...a.top.map((v) => v.views), 1);
+  return (
+    <>
+      <h3>
+        {range.label} {lag && <span className="fine"> · {lag}</span>}
+      </h3>
+      <div className="kpis">
+        <Stat label="조회수" value={cur.views} kind="count" hero>
+          <Delta cur={cur.views} prev={prev?.views ?? null} goodWhen="up" />
+        </Stat>
+        <Stat label="시청 시간" value={fmtHours(cur.minutes)}>
+          <Delta cur={cur.minutes} prev={prev?.minutes ?? null} goodWhen="up" />
+        </Stat>
+        <Stat label="평균 시청 시간" value={fmtDur(cur.avgViewSec)}>
+          <Delta cur={cur.avgViewSec} prev={prev?.avgViewSec ?? null} goodWhen="up" />
+        </Stat>
+        <Stat label="구독자 순증" value={`${cur.subsNet > 0 ? "+" : ""}${fmtValue(cur.subsNet, "count")}`}>
+          {prev && <span className="delta flat">직전 기간 {prev.subsNet > 0 ? "+" : ""}{fmtValue(prev.subsNet, "count")}</span>}
+        </Stat>
+        <Stat label="좋아요 · 댓글 · 공유" value={`${fmtValue(cur.likes, "count")} · ${fmtValue(cur.comments, "count")} · ${fmtValue(cur.shares, "count")}`} />
+      </div>
+      {a.days.length > 1 && (
+        <div className="charts">
+          <div>
+            <h3>일별 조회수</h3>
+            <TrendChart points={a.days.map((d) => ({ date: d.date, value: d.views }))} kind="count" color="s1" name="조회수" />
+          </div>
+          <div>
+            <h3>일별 시청 시간(분)</h3>
+            <TrendChart points={a.days.map((d) => ({ date: d.date, value: d.minutes }))} kind="count" color="s2" name="시청 시간(분)" />
+          </div>
+        </div>
+      )}
+      {a.top.length > 0 && (
+        <>
+          <h3>이 기간 많이 본 영상</h3>
+          <div className="scroll">
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>영상</th>
+                  <th>조회수</th>
+                  <th className="num">시청 시간</th>
+                  <th className="num">평균 시청</th>
+                </tr>
+              </thead>
+              <tbody>
+                {a.top.map((v) => (
+                  <tr key={v.id}>
+                    <td className="name" title={v.title}>
+                      {v.title}
+                    </td>
+                    <td>
+                      <span className="inline-bar">
+                        <span style={{ width: `${(v.views / maxViews) * 100}%` }} />
+                      </span>
+                      <span className="num">{fmtValue(v.views, "count")}</span>
+                    </td>
+                    <td className="num">{fmtHours(v.minutes)}</td>
+                    <td className="num">{fmtDur(v.avgViewSec)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+function YoutubePanel({ y, brand, range }: { y: YoutubeSummary; brand: BrandId; range: DateRange }) {
   if (!y.ok) {
     return (
       <section className="panel">
@@ -212,15 +305,17 @@ function YoutubePanel({ y, brand }: { y: YoutubeSummary; brand: BrandId }) {
     <section className="panel">
       <div className="panel-head">
         <h2>유튜브</h2>
-        <p className="meta">{y.channelTitle} · 최근 업로드 {y.videos.length}개</p>
+        <p className="meta">{y.channelTitle}</p>
       </div>
+      {y.analytics && <YoutubeAnalyticsBlock a={y.analytics} brand={brand} range={range} />}
+      <h3>채널 현황 (누적)</h3>
       <div className="kpis">
-        <Stat label="구독자" value={y.subscribers == null ? "비공개" : fmtValue(y.subscribers, "count")} hero />
+        <Stat label="구독자" value={y.subscribers == null ? "비공개" : fmtValue(y.subscribers, "count")} />
         <Stat label="채널 총 조회수" value={y.totalViews} kind="count" />
         <Stat label="공개 영상" value={y.videoCount} kind="count" />
         <Stat label="최근 영상 평균 조회" value={avg} kind="count" />
       </div>
-      <h3>최근 영상 조회수 (최신순)</h3>
+      <h3>최근 업로드 {y.videos.length}개 누적 조회수 (최신순)</h3>
       <BarList
         color="s1"
         items={y.videos.map((v) => ({
@@ -332,7 +427,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Que
         <>
           {meta && <MetaPanel m={meta} range={range} />}
           {ads && <AdsPanel a={ads} ga={ga} range={range} />}
-          {yt && <YoutubePanel y={yt} brand={brand} />}
+          {yt && <YoutubePanel y={yt} brand={brand} range={range} />}
           {!meta && !ads && !yt && <p className="note panel">광고 소스가 아직 연결되지 않았습니다. '연결' 탭을 확인하세요.</p>}
         </>
       ),

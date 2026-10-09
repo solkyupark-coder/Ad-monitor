@@ -22,7 +22,7 @@
 | 결제 DB (Supabase purchase) | — | `SUPABASE_URL`, `SUPABASE_READONLY_KEY` | purchase 테이블 select만 허용한 읽기 전용 키 |
 | 사이트·배포 (Vercel) | `VERCEL_API_TOKEN`, `VERCEL_TEAM_ID` | `VERCEL_PROJECT_ID` | 팀 범위 토큰(읽기만 사용) |
 | 구글 광고 | `GOOGLE_ADS_REFRESH_TOKEN` (+ OAuth 클라이언트) | `GOOGLE_ADS_CUSTOMER_ID` (숫자 10자리) | `adwords` |
-| 유튜브 | OAuth 클라이언트 | `YOUTUBE_REFRESH_TOKEN`, `YOUTUBE_CHANNEL_ID` | `youtube.readonly` |
+| 유튜브 | OAuth 클라이언트 | `YOUTUBE_REFRESH_TOKEN`, `YOUTUBE_CHANNEL_ID` | `youtube.readonly` + `yt-analytics.readonly`(기간별 지표) |
 | 메타 | — | `META_ACCESS_TOKEN`, `META_AD_ACCOUNT_ID` (+선택 `META_BUSINESS_ID`, `META_EXTRA_AD_ACCOUNT_IDS`) | `ads_read` (+`business_management`: 비즈니스 ID로 자동 탐색할 때) |
 
 속성·계정 ID (비밀이 아님): GA4 속성 하우스케이퍼 `555914097` / 토포제네시스 `487961539`, 구글 광고 고객 ID 하우스케이퍼 `5133039562` / 토포제네시스 `9021418629`(하이픈 없이 10자리, 하이픈이 있어도 숫자만 읽는다), 관리자(MCC) `8554198133`. 이전 README의 `8556065657`·"토포제네시스 `5133039562`"는 잘못된 표기였다. 이 ID는 계정 전환 때 바뀔 수 있으니, 화면의 "고객 ID …" 오류 문구와 항상 대조한다.
@@ -191,9 +191,11 @@ body: {"p_from":"2026-09-30","p_to":"2026-10-06","p_tz":"Asia/Seoul"}   (날짜 
 4. 토큰은 **한 번만 화면에 보이고** 서버 저장·캐시·로그는 하지 않는다. 그 값을 Vercel `{브랜드}_REDDIT_REFRESH_TOKEN`(Sensitive)에 넣고 재배포한다.
 
 ## 유튜브 refresh token 발급 (`/api/youtube/connect?brand=houscaper|topogenesis`)
+유튜브 패널의 기간별 지표(조회수·시청 시간·평균 시청 시간·구독자 순증·기간 인기 영상, 직전 기간 대비)는 YouTube Analytics API로 읽는다. 먼저 Google Cloud 콘솔(`ferrous-arena-510513-p2`) → API 및 서비스 → 라이브러리에서 **YouTube Analytics API**를 사용 설정한다. `youtube.readonly`만으로 받았던 예전 토큰이면 패널이 "기간별 지표 권한 없음"을 띄우고 채널 현황만 보여 주니, 아래 순서로 다시 연결해 토큰을 바꾼다. 분석 수치는 보통 2~3일 늦게 채워지며, 패널 제목 옆에 마지막 반영 날짜가 보인다.
+
 1. **먼저 한 번만**: Google Cloud 콘솔(프로젝트 `ferrous-arena-510513-p2`) → API 및 서비스 → 사용자 인증 정보 → OAuth 클라이언트(`GOOGLE_OAUTH_CLIENT_ID`) → 승인된 리디렉션 URI에 `https://ad-monitor-eight.vercel.app/api/youtube/callback` 추가. 없으면 `redirect_uri_mismatch`.
 2. 유튜브 패널이 오류(예: `invalid_grant`)면 "유튜브 다시 연결", refresh token만 없으면 연결 필요 카드에 "유튜브 연결하기"가 보인다. **`https://ad-monitor-eight.vercel.app`에 로그인한 상태로** 누른다.
-3. 구글 계정 선택 화면에서 **그 브랜드 채널을 가진 계정(브랜드 계정이면 브랜드 계정)**을 고른다. 범위는 `youtube.readonly` 하나만 요청한다.
+3. 구글 계정 선택 화면에서 **그 브랜드 채널을 가진 계정(브랜드 계정이면 브랜드 계정)**을 고른다. 범위는 읽기 전용 두 개(`youtube.readonly`, `yt-analytics.readonly`)만 요청한다. 동의 화면에 체크 상자가 나오면 둘 다 체크한다.
 4. 결과 화면이 채널(`{브랜드}_YOUTUBE_CHANNEL_ID`와 일치하는지), 권한(읽기 전용인지), 만료(Testing이면 약 7일)를 확인해 보여 주고, refresh token을 **한 번만** 보여 준다. Vercel `{브랜드}_YOUTUBE_REFRESH_TOKEN`(Sensitive)에 넣고 재배포한다.
 5. **7일 만료**: OAuth 동의 화면이 Testing 상태면 refresh token이 7일 뒤 만료된다(`invalid_grant`). 콘솔 → OAuth 동의 화면(대상) → "앱 게시"로 프로덕션에 올린 뒤 다시 연결하면 만료되지 않는다. 같은 클라이언트를 쓰는 `GA_REFRESH_TOKEN`, `GOOGLE_ADS_REFRESH_TOKEN`도 같은 이유로 7일마다 끊길 수 있다.
 

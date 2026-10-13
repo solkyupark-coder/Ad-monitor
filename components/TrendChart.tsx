@@ -1,11 +1,10 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fmtCompact, fmtDate, fmtValue, type Kind } from "@/lib/format";
 
 type Pt = { date: string; value: number };
 
-const W = 480;
-const H = 200;
+const W0 = 480; // 측정 전(서버 렌더) 기본 폭
 const L = 40;
 const R = 54;
 const T = 14;
@@ -32,6 +31,21 @@ export function TrendChart({
   name: string;
 }) {
   const [hover, setHover] = useState<number | null>(null);
+  // 그려지는 폭에 viewBox를 맞춰 글자가 줄어들거나 커지지 않게 한다(폰 320px에서도 11px 그대로). 숨겨진 탭(폭 0)에서는 무시.
+  const [w, setW] = useState(W0);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = box.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(([e]) => {
+      const cw = Math.round(e.contentRect.width);
+      if (cw >= 200) setW(Math.min(Math.max(cw, 260), 760));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const W = w;
+  const H = w < 400 ? 170 : 200;
   const n = points.length;
   if (n === 0) return <p className="note">표시할 데이터가 없습니다.</p>;
   const max = niceMax(Math.max(...points.map((p) => p.value), 0));
@@ -52,7 +66,7 @@ export function TrendChart({
   const leftPct = Math.max(14, Math.min(86, (x(active) / W) * 100));
 
   return (
-    <div className="chart">
+    <div className="chart" ref={box}>
       <div className="tip" style={{ left: `${leftPct}%`, opacity: hover === null ? 0 : 1 }} aria-hidden>
         <strong>{fmtValue(points[active].value, kind, currency)}</strong>
         <span>{fmtDate(points[active].date)}</span>

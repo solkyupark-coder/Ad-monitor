@@ -2,14 +2,14 @@ import { fmtValue, type Kind } from "@/lib/format";
 
 // 전주 대비 증감. 방향 색은 '오르면 좋은지'에 따라 정하고, 항상 화살표+문구를 같이 쓴다.
 export function Delta({ cur, prev, goodWhen }: { cur: number; prev: number | null; goodWhen: "up" | "down" | "neutral" }) {
-  if (prev === null || prev === 0) return <span className="delta flat">전주 비교 없음</span>;
+  if (prev === null || prev === 0) return <span className="delta flat">직전 기간 비교 없음</span>;
   const r = (cur - prev) / prev;
   if (Math.abs(r) < 0.0005) return <span className="delta flat">― 변동 없음</span>;
   const up = r > 0;
   const cls = goodWhen === "neutral" ? "flat" : (up ? goodWhen === "up" : goodWhen === "down") ? "good" : "bad";
   return (
     <span className={`delta ${cls}`}>
-      {up ? "▲" : "▼"} {Math.abs(r * 100).toFixed(1)}% <span className="vs">전주 대비</span>
+      {up ? "▲" : "▼"} {Math.abs(r * 100).toFixed(1)}% <span className="vs">직전 기간 대비</span>
     </span>
   );
 }

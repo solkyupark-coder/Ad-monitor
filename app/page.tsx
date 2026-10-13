@@ -1,14 +1,39 @@
-import { BRANDS, statusFor, type BrandId } from "@/lib/platforms";
-import { youtubeSummary, type YoutubeSummary } from "@/lib/youtube";
-import { metaSummary, weekSplit, type MetaSummary } from "@/lib/meta";
-import { demoMeta, demoOn, demoYoutube } from "@/lib/demo";
+import { BRANDS, type BrandId } from "@/lib/platforms";
+import { periodSplit, type MetaAccountRole, type MetaSummary } from "@/lib/meta";
+import type { YoutubeAnalytics, YoutubeSummary } from "@/lib/youtube";
 import { fmtCompact, fmtDate, fmtValue } from "@/lib/format";
 import { TrendChart } from "@/components/TrendChart";
 import { BarList, Delta, Stat } from "@/components/ui";
+import { AdsPanel, Ga4Panel, RevenuePanel, VercelPanel } from "@/components/panels";
+import { ActionsPanel, OverviewPanel } from "@/components/Overview";
+import { EffectPanel } from "@/components/EffectPanel";
+import { LevelIcon } from "@/components/icons";
+import { StateBadge } from "@/components/StateBadge";
+import { isStopped } from "@/lib/campaign-state";
+import { ViewTabs, type TabDef } from "@/components/ViewTabs";
+import { loadDashboard } from "@/lib/dashboard";
+import { exportData } from "@/lib/export";
+import { parseRange, PRESETS, rangeQuery, yesterdayDate, type DateRange } from "@/lib/range";
 
 export const dynamic = "force-dynamic";
 
-function MetaPanel({ m }: { m: MetaSummary }) {
+const ROLE_LABEL: Record<MetaAccountRole, string> = { main: "대표(Ads Manager)", extra: "추가 계정", discovered: "비즈니스에서 찾은 계정" };
+const STATUS: Record<string, { text: string; level: "good" | "warn" | "bad" | "hold" }> = {
+  ACTIVE: { text: "진행 중", level: "good" },
+  PAUSED: { text: "일시중지", level: "hold" },
+  CAMPAIGN_PAUSED: { text: "일시중지", level: "hold" },
+  ADSET_PAUSED: { text: "일시중지", level: "hold" },
+  IN_PROCESS: { text: "처리 중", level: "hold" },
+  PENDING_REVIEW: { text: "검토 중", level: "warn" },
+  WITH_ISSUES: { text: "문제 있음", level: "warn" },
+  DISAPPROVED: { text: "반려", level: "bad" },
+  ARCHIVED: { text: "보관", level: "hold" },
+  DELETED: { text: "삭제됨", level: "hold" },
+};
+
+const PLAIN_STATUS = new Set(["ACTIVE", "PAUSED", "CAMPAIGN_PAUSED", "ADSET_PAUSED", "DELETED", "ARCHIVED"]);
+
+function MetaPanel({ m, range }: { m: MetaSummary; range: DateRange }) {
   if (!m.ok) {
     return (
       <section className="panel">
@@ -17,17 +42,21 @@ function MetaPanel({ m }: { m: MetaSummary }) {
       </section>
     );
   }
-  const { cur, prev } = weekSplit(m.days);
-  const last7 = m.days.slice(-7);
-  const period = last7.length ? `${fmtDate(last7[0].date)} – ${fmtDate(last7[last7.length - 1].date)}` : "";
+  const split = periodSplit(m.days, range.days);
+  const cur = split.cur;
+  const prev = range.today ? null : split.prev; // 오늘은 하루가 안 끝나 어제 전체와 견주지 않는다
+  const curDays = m.days.slice(-range.days);
   const maxSpend = Math.max(...m.campaigns.map((c) => c.spend), 1);
   const cur$ = (n: number) => fmtValue(n, "won", m.currency);
+  const promos = m.campaigns.filter((c) => c.promo);
+  const promoSpend = promos.reduce((a, c) => a + c.spend, 0);
+  const multi = m.accounts.length > 1;
   return (
     <section className="panel">
       <div className="panel-head">
-        <h2>메타 광고</h2>
+        <h2>메타 광고{promos.length || multi ? " · 인스타 프로모션 포함" : ""}</h2>
         <p className="meta">
-          {m.accountName} · 최근 7일 {period} (어제까지)
+          {m.accountName} · {range.label}
         </p>
       </div>
       <div className="kpis">
@@ -50,19 +79,63 @@ function MetaPanel({ m }: { m: MetaSummary }) {
           <Delta cur={cur.cpm} prev={prev?.cpm ?? null} goodWhen="down" />
         </Stat>
       </div>
+      {m.notes.map((n) => (
+        <div key={n} className="alert warn" role="note">
+          <p>{n}</p>
+        </div>
+      ))}
+      <div className="promo-sum">
+        <span className="vchip hold">
+          <LevelIcon level={promos.length ? "good" : "hold"} size={11} />
+          인스타·페이스북 프로모션(부스트)
+        </span>
+        <span>
+          {promos.length ? (
+            <>
+              <strong>{cur$(promoSpend)}</strong> · 캠페인 {promos.length}개 (위 합계에 포함)
+            </>
+          ) : (
+            "이 기간 프로모션 캠페인이 없습니다"
+          )}
+        </span>
+      </div>
+      {multi && (
+        <>
+          <h3>광고 계정별</h3>
+          <ul className="acct-list">
+            {m.accounts.map((a) => (
+              <li key={a.id} className={a.ok ? "" : "bad"}>
+                <span className="acct-name">
+                  <strong>{a.ok ? a.name || a.id : a.id}</strong>
+                  <span className="fine-inline">{ROLE_LABEL[a.role]}</span>
+                </span>
+                {a.ok ? (
+                  <span className="acct-val">
+                    {fmtValue(a.spend, "won", a.currency)} · 캠페인 {a.campaigns}개{a.included ? "" : " · 합계 제외(통화 다름)"}
+                  </span>
+                ) : (
+                  <span className="acct-val bad">
+                    <LevelIcon level="bad" size={11} /> {a.reason}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       <div className="charts">
         <div>
           <h3>일별 지출</h3>
-          <TrendChart points={m.days.map((d) => ({ date: d.date, value: d.spend }))} kind="won" currency={m.currency} color="s1" name="지출" />
+          <TrendChart points={curDays.map((d) => ({ date: d.date, value: d.spend }))} kind="won" currency={m.currency} color="s1" name="지출" />
         </div>
         <div>
           <h3>일별 클릭</h3>
-          <TrendChart points={m.days.map((d) => ({ date: d.date, value: d.clicks }))} kind="count" color="s2" name="클릭" />
+          <TrendChart points={curDays.map((d) => ({ date: d.date, value: d.clicks }))} kind="count" color="s2" name="클릭" />
         </div>
       </div>
       {m.campaigns.length > 0 && (
         <>
-          <h3>캠페인별 (최근 7일, 지출 순)</h3>
+          <h3>캠페인별 (지출 순)</h3>
           <div className="scroll">
             <table className="data">
               <thead>
@@ -71,14 +144,31 @@ function MetaPanel({ m }: { m: MetaSummary }) {
                   <th>지출</th>
                   <th className="num">노출</th>
                   <th className="num">클릭</th>
+                  <th className="num" title="링크를 누른 뒤 랜딩 페이지가 실제로 열린 수(메타 landing_page_view). 메타가 안 주면 -">랜딩 조회</th>
                   <th className="num">CTR</th>
                 </tr>
               </thead>
               <tbody>
-                {m.campaigns.slice(0, 8).map((c) => (
-                  <tr key={c.name}>
-                    <td className="name" title={c.name}>
-                      {c.name}
+                {m.campaigns.slice(0, 12).map((c, i) => {
+                  // 집행 중/중지됨/삭제됨은 배지로 따로 보이므로, 여기서는 그 밖의 상태(검토 중·문제 있음·반려 등)만 칩으로 남긴다.
+                  const st = c.status && !PLAIN_STATUS.has(c.status) ? STATUS[c.status] ?? { text: c.status, level: "hold" as const } : null;
+                  return (
+                  <tr key={`${c.account ?? ""}-${c.name}-${i}`} className={isStopped(c.state) ? "off" : undefined}>
+                    <td className="name wrap" title={c.account ? `${c.name} · ${c.account}` : c.name}>
+                      <span className="nm">{c.name}</span>
+                      <span className="tags">
+                        <StateBadge state={c.state} raw={c.status} />
+                        {c.paidBy && <span className="vchip warn" title="이 광고비는 다른 브랜드의 광고 계정에서 결제됐습니다">{c.paidBy}</span>}
+                        {c.promo && !c.paidBy && <span className="vchip hold">프로모션</span>}
+                        {c.orig && <span className="vchip" title="통화가 달라 고정 환율로 환산한 금액입니다">{c.orig}</span>}
+                        {st && (
+                          <span className={`vchip ${st.level}`}>
+                            <LevelIcon level={st.level} size={10} />
+                            {st.text}
+                          </span>
+                        )}
+                        {c.account && <span className="fine-inline">{c.account}</span>}
+                      </span>
                     </td>
                     <td>
                       <span className="inline-bar">
@@ -88,9 +178,11 @@ function MetaPanel({ m }: { m: MetaSummary }) {
                     </td>
                     <td className="num">{fmtCompact(c.impressions)}</td>
                     <td className="num">{fmtCompact(c.clicks)}</td>
+                    <td className="num" title={c.linkClicks !== undefined ? `링크 클릭 ${c.linkClicks}` : undefined}>{c.landingViews !== undefined ? fmtCompact(c.landingViews) : "-"}</td>
                     <td className="num">{c.impressions ? `${((c.clicks / c.impressions) * 100).toFixed(2)}%` : "-"}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -100,12 +192,111 @@ function MetaPanel({ m }: { m: MetaSummary }) {
   );
 }
 
-function YoutubePanel({ y }: { y: YoutubeSummary }) {
+const fmtHours = (min: number) => `${min < 600 ? (min / 60).toFixed(1) : fmtValue(min / 60, "count")}시간`;
+const fmtDur = (sec: number) => `${Math.floor(sec / 60)}분 ${String(Math.round(sec % 60)).padStart(2, "0")}초`;
+
+function YoutubeAnalyticsBlock({ a, brand, range }: { a: YoutubeAnalytics; brand: BrandId; range: DateRange }) {
+  if (!a.ok) {
+    return (
+      <>
+        <h3>기간별 지표</h3>
+        <p className="note">{a.reason}</p>
+        {a.reconnect && (
+          <p>
+            <a className="connect" href={`/api/youtube/connect?brand=${brand}`}>
+              유튜브 다시 연결
+            </a>
+            <span className="fine"> 분석 권한을 포함해 새 refresh token을 한 번 보여 줍니다.</span>
+          </p>
+        )}
+      </>
+    );
+  }
+  const { cur, prev } = a;
+  const lag = a.lastDate && a.lastDate < range.to ? `유튜브 분석은 ${fmtDate(a.lastDate)}까지 반영됨(보통 2~3일 늦음)` : a.lastDate ? "" : "이 기간 분석 수치가 아직 없습니다(보통 2~3일 늦게 반영)";
+  const maxViews = Math.max(...a.top.map((v) => v.views), 1);
+  return (
+    <>
+      <h3>
+        {range.label} {lag && <span className="fine"> · {lag}</span>}
+      </h3>
+      <div className="kpis">
+        <Stat label="조회수" value={cur.views} kind="count" hero>
+          <Delta cur={cur.views} prev={prev?.views ?? null} goodWhen="up" />
+        </Stat>
+        <Stat label="시청 시간" value={fmtHours(cur.minutes)}>
+          <Delta cur={cur.minutes} prev={prev?.minutes ?? null} goodWhen="up" />
+        </Stat>
+        <Stat label="평균 시청 시간" value={fmtDur(cur.avgViewSec)}>
+          <Delta cur={cur.avgViewSec} prev={prev?.avgViewSec ?? null} goodWhen="up" />
+        </Stat>
+        <Stat label="구독자 순증" value={`${cur.subsNet > 0 ? "+" : ""}${fmtValue(cur.subsNet, "count")}`}>
+          {prev && <span className="delta flat">직전 기간 {prev.subsNet > 0 ? "+" : ""}{fmtValue(prev.subsNet, "count")}</span>}
+        </Stat>
+        <Stat label="좋아요 · 댓글 · 공유" value={`${fmtValue(cur.likes, "count")} · ${fmtValue(cur.comments, "count")} · ${fmtValue(cur.shares, "count")}`} />
+      </div>
+      {a.days.length > 1 && (
+        <div className="charts">
+          <div>
+            <h3>일별 조회수</h3>
+            <TrendChart points={a.days.map((d) => ({ date: d.date, value: d.views }))} kind="count" color="s1" name="조회수" />
+          </div>
+          <div>
+            <h3>일별 시청 시간(분)</h3>
+            <TrendChart points={a.days.map((d) => ({ date: d.date, value: d.minutes }))} kind="count" color="s2" name="시청 시간(분)" />
+          </div>
+        </div>
+      )}
+      {a.top.length > 0 && (
+        <>
+          <h3>이 기간 많이 본 영상</h3>
+          <div className="scroll">
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>영상</th>
+                  <th>조회수</th>
+                  <th className="num">시청 시간</th>
+                  <th className="num">평균 시청</th>
+                </tr>
+              </thead>
+              <tbody>
+                {a.top.map((v) => (
+                  <tr key={v.id}>
+                    <td className="name" title={v.title}>
+                      {v.title}
+                    </td>
+                    <td>
+                      <span className="inline-bar">
+                        <span style={{ width: `${(v.views / maxViews) * 100}%` }} />
+                      </span>
+                      <span className="num">{fmtValue(v.views, "count")}</span>
+                    </td>
+                    <td className="num">{fmtHours(v.minutes)}</td>
+                    <td className="num">{fmtDur(v.avgViewSec)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+function YoutubePanel({ y, brand, range }: { y: YoutubeSummary; brand: BrandId; range: DateRange }) {
   if (!y.ok) {
     return (
       <section className="panel">
         <h2>유튜브</h2>
         <p className="note">{y.reason}</p>
+        <p>
+          <a className="connect" href={`/api/youtube/connect?brand=${brand}`}>
+            유튜브 다시 연결
+          </a>
+          <span className="fine"> 구글 승인 후 새 refresh token을 한 번 보여 줍니다.</span>
+        </p>
       </section>
     );
   }
@@ -114,15 +305,17 @@ function YoutubePanel({ y }: { y: YoutubeSummary }) {
     <section className="panel">
       <div className="panel-head">
         <h2>유튜브</h2>
-        <p className="meta">{y.channelTitle} · 최근 업로드 {y.videos.length}개</p>
+        <p className="meta">{y.channelTitle}</p>
       </div>
+      {y.analytics && <YoutubeAnalyticsBlock a={y.analytics} brand={brand} range={range} />}
+      <h3>채널 현황 (누적)</h3>
       <div className="kpis">
-        <Stat label="구독자" value={y.subscribers == null ? "비공개" : fmtValue(y.subscribers, "count")} hero />
+        <Stat label="구독자" value={y.subscribers == null ? "비공개" : fmtValue(y.subscribers, "count")} />
         <Stat label="채널 총 조회수" value={y.totalViews} kind="count" />
         <Stat label="공개 영상" value={y.videoCount} kind="count" />
         <Stat label="최근 영상 평균 조회" value={avg} kind="count" />
       </div>
-      <h3>최근 영상 조회수 (최신순)</h3>
+      <h3>최근 업로드 {y.videos.length}개 누적 조회수 (최신순)</h3>
       <BarList
         color="s1"
         items={y.videos.map((v) => ({
@@ -137,35 +330,116 @@ function YoutubePanel({ y }: { y: YoutubeSummary }) {
   );
 }
 
-export default async function Home({ searchParams }: { searchParams: Promise<{ brand?: string }> }) {
-  const { brand: q } = await searchParams;
-  const brand: BrandId = BRANDS.some((b) => b.id === q) ? (q as BrandId) : "houscaper";
-  const demo = demoOn();
-  const statuses = statusFor(brand);
-  const isOn = (id: string) => demo && (id === "meta" || id === "youtube") ? true : statuses.find((s) => s.platform.id === id)?.connected;
-  const meta = isOn("meta") ? (demo ? demoMeta() : await metaSummary(brand)) : null;
-  const yt = isOn("youtube") ? (demo ? demoYoutube() : await youtubeSummary(brand)) : null;
-  const connectedCount = statuses.filter((s) => isOn(s.platform.id)).length;
-  const pending = statuses.filter((s) => !isOn(s.platform.id));
+function RangePicker({ brand, range }: { brand: BrandId; range: DateRange }) {
   return (
-    <main>
-      <header>
-        <h1>광고 모니터링</h1>
-        <nav className="tabs">
-          {BRANDS.map((b) => (
-            <a key={b.id} href={`/?brand=${b.id}`} className={b.id === brand ? "on" : ""}>
-              {b.label}
-            </a>
-          ))}
-        </nav>
-      </header>
-      <p className="sub">
-        {connectedCount} / {statuses.length} 플랫폼 연결됨 · 수치는 약 10분 간격으로 갱신됩니다.
+    <div className="range">
+      <nav className="presets" aria-label="조회 기간">
+        <a href={`/?brand=${brand}&range=today`} data-keep-hash className={range.today ? "on" : ""}>
+          오늘
+        </a>
+        <a href={`/?brand=${brand}&range=1`} data-keep-hash className={range.preset === 1 ? "on" : ""}>
+          어제
+        </a>
+        {PRESETS.map((n) => (
+          <a key={n} href={`/?brand=${brand}&range=${n}`} data-keep-hash className={range.preset === n ? "on" : ""}>
+            {n}일
+          </a>
+        ))}
+      </nav>
+      <form method="get" action="/" data-keep-hash className={range.preset || range.today ? "custom" : "custom on"}>
+        <input type="hidden" name="brand" value={brand} />
+        <input type="date" name="from" defaultValue={range.from} max={yesterdayDate()} aria-label="시작일" required />
+        <span>–</span>
+        <input type="date" name="to" defaultValue={range.to} max={yesterdayDate()} aria-label="종료일" required />
+        <button type="submit">적용</button>
+      </form>
+      <p className="fine">
+        {range.label} · 비교: {range.today ? `어제(${fmtDate(range.prev.to)}) 같은 시각까지` : range.days === 1 ? `전날(${fmtDate(range.prev.to)}) 하루` : `직전 ${range.days}일 (${fmtDate(range.prev.from)} – ${fmtDate(range.prev.to)})`}
       </p>
-      {demo && <p className="demo">데모 데이터입니다. 실제 수치가 아닙니다.</p>}
-      {meta && <MetaPanel m={meta} />}
-      {yt && <YoutubePanel y={yt} />}
-      {pending.length > 0 && (
+      {range.today && <p className="fine">오늘은 하루가 끝나지 않아 카드의 '직전 기간 대비'는 숨깁니다. 어제 같은 시각까지의 비교는 한눈에 보기 그래프에서 보세요.</p>}
+    </div>
+  );
+}
+
+// 광고 채널 전체의 참여 1회당 비용(통화가 하나이고 참여가 있을 때만).
+function effectCostPerEngaged(e: import("@/lib/effect").EffectReport): number | null {
+  if (e.mixedCurrency) return null;
+  // GA4에서 유입이 잡힌 채널만 합친다 — 추적 안 되는 채널의 광고비를 분자에 넣으면 비용이 부풀려진다.
+  const tracked = e.channels.filter((c) => c.sessions > 0);
+  const spend = tracked.reduce((a, c) => a + c.spend, 0);
+  const engaged = tracked.reduce((a, c) => a + c.engaged, 0);
+  return engaged ? spend / engaged : null;
+}
+
+type Query = { brand?: string; range?: string; from?: string; to?: string };
+
+export default async function Home({ searchParams }: { searchParams: Promise<Query> }) {
+  const sp = await searchParams;
+  const q = sp.brand;
+  const brand: BrandId = BRANDS.some((b) => b.id === q) ? (q as BrandId) : "houscaper";
+  const range = parseRange(sp);
+  const d = await loadDashboard(brand, range);
+  const { meta, yt, ga, rev, ads, vc, overview, effect, actions, pending } = d;
+
+  const exportJson = exportData(d);
+  const urgent = actions.filter((a) => a.level === "bad").length;
+  const check = actions.filter((a) => a.level === "warn").length;
+  const wasted = effect.campaigns.filter((c) => c.verdict === "bad").length;
+
+  const tabs: TabDef[] = [
+    {
+      id: "overview",
+      label: "한눈에 보기",
+      short: "한눈에",
+      badge: urgent ? { text: `긴급 ${urgent}`, short: String(urgent), level: "bad" } : check ? { text: `확인 ${check}`, short: String(check), level: "warn" } : null,
+      node: (
+        <>
+          <OverviewPanel o={overview} range={range} costPerEngaged={effectCostPerEngaged(effect)} combo={d.combo} brandLabel={d.brandLabel} signups={d.signups} />
+          <ActionsPanel items={actions} />
+        </>
+      ),
+    },
+    {
+      id: "effect",
+      label: "광고 효과",
+      short: "효과",
+      badge: wasted ? { text: `낭비 ${wasted}`, short: String(wasted), level: "bad" } : null,
+      node: <EffectPanel e={effect} range={range} data={exportJson} />,
+    },
+    {
+      id: "money",
+      label: "매출·사이트",
+      short: "매출",
+      node: (
+        <>
+          {rev && <RevenuePanel real={rev} ga={ga} range={range} />}
+          {ga && <Ga4Panel g={ga} range={range} />}
+          {vc && <VercelPanel v={vc} ga={ga} range={range} />}
+          {!rev && !ga && !vc && <p className="note panel">매출·사이트 소스가 아직 연결되지 않았습니다. '연결' 탭을 확인하세요.</p>}
+        </>
+      ),
+    },
+    {
+      id: "ads",
+      label: "광고 상세",
+      short: "광고",
+      node: (
+        <>
+          {meta && <MetaPanel m={meta} range={range} />}
+          {ads && <AdsPanel a={ads} ga={ga} range={range} />}
+          {yt && <YoutubePanel y={yt} brand={brand} range={range} />}
+          {!meta && !ads && !yt && <p className="note panel">광고 소스가 아직 연결되지 않았습니다. '연결' 탭을 확인하세요.</p>}
+        </>
+      ),
+    },
+  ];
+  if (pending.length > 0) {
+    tabs.push({
+      id: "connect",
+      label: "연결",
+      short: "연결",
+      badge: { text: String(pending.length), short: String(pending.length), level: "info" },
+      node: (
         <>
           <h3 className="pending-title">연결이 필요한 플랫폼</h3>
           <section className="grid">
@@ -174,6 +448,22 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ b
                 <h2>{platform.label}</h2>
                 <p className="state">연결 필요</p>
                 <p className="note">{platform.note}</p>
+                {platform.id === "youtube" && missing.length === 1 && missing[0].endsWith("_YOUTUBE_REFRESH_TOKEN") && (
+                  <p>
+                    <a className="connect" href={`/api/youtube/connect?brand=${brand}`}>
+                      유튜브 연결하기
+                    </a>
+                    <span className="fine"> 구글 승인 후 refresh token을 한 번 보여 줍니다.</span>
+                  </p>
+                )}
+                {platform.id === "reddit" && missing.length === 1 && missing[0].endsWith("_REDDIT_REFRESH_TOKEN") && (
+                  <p>
+                    <a className="connect" href={`/api/reddit/connect?brand=${brand}`}>
+                      레딧 연결하기
+                    </a>
+                    <span className="fine"> 레딧 승인 후 refresh token을 한 번 보여 줍니다.</span>
+                  </p>
+                )}
                 <p className="label">Vercel 환경변수에 필요:</p>
                 <ul>
                   {missing.map((k) => (
@@ -186,7 +476,28 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ b
             ))}
           </section>
         </>
-      )}
+      ),
+    });
+  }
+
+  return (
+    <main>
+      <header>
+        <h1>광고 모니터링</h1>
+        <nav className="tabs" aria-label="브랜드">
+          {BRANDS.map((b) => (
+            <a key={b.id} href={`/?brand=${b.id}&${rangeQuery(range)}`} data-keep-hash className={b.id === brand ? "on" : ""}>
+              {b.label}
+            </a>
+          ))}
+        </nav>
+      </header>
+      <p className="sub">
+        {d.connectedCount} / {d.statuses.length} 플랫폼 연결됨 · 수치는 약 10분 간격으로 갱신됩니다.
+      </p>
+      <RangePicker brand={brand} range={range} />
+      {d.demo && <p className="demo">데모 데이터입니다. 실제 수치가 아닙니다.</p>}
+      <ViewTabs tabs={tabs} />
     </main>
   );
 }

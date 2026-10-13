@@ -1,7 +1,7 @@
 // 화면(app/page.tsx)과 내보내기(app/api/export)가 같은 데이터·같은 계산을 쓰도록 한곳에서 모은다.
 import { BRANDS, statusFor, type BrandId, type PlatformId, type PlatformStatus } from "@/lib/platforms";
 import { youtubeSummary, type YoutubeSummary } from "@/lib/youtube";
-import { metaSummary, type MetaSummary } from "@/lib/meta";
+import { metaSummary, placementMix, type MetaSummary } from "@/lib/meta";
 import { ga4Summary, type Ga4Summary } from "@/lib/ga4";
 import { googleAdsSummary, type GoogleAdsSummary } from "@/lib/googleads";
 import { revenueDays, revenueSummary, type RevenueSummary } from "@/lib/revenue";
@@ -80,6 +80,8 @@ export async function loadDashboard(brand: BrandId, range: DateRange, skip: { yo
     ads: ads && ads.ok ? { days: ads.days, currency: ads.currency } : null,
     realUsers: ga && ga.ok ? ga.real.activeUsers : null,
     botUsers: ga && ga.ok ? ga.split.suspectUsers : null,
+    datacenterUsers: ga && ga.ok ? ga.split.datacenterUsers : null,
+    placements: meta && meta.ok ? placementMix(meta.campaigns) : null,
     internalUsers: ga && ga.ok && ga.internal ? ga.internal.users : null,
     signups: signups && signups.ok ? signups.count : null,
     signupsPrev: signups && signups.ok ? signups.countPrev : null,
@@ -89,7 +91,7 @@ export async function loadDashboard(brand: BrandId, range: DateRange, skip: { yo
     today: range.today,
   });
   const effect = buildEffect({
-    meta: meta && meta.ok ? { currency: meta.currency, campaigns: meta.campaigns.map((c) => ({ name: c.name, spend: c.spend, impressions: c.impressions, clicks: c.clicks, linkClicks: c.linkClicks, landingViews: c.landingViews, state: c.state, paidBy: c.paidBy })), total: sumTotals(meta.days.slice(-range.days), (d) => d.spend) } : null,
+    meta: meta && meta.ok ? { currency: meta.currency, campaigns: meta.campaigns.map((c) => ({ name: c.name, id: c.id, spend: c.spend, impressions: c.impressions, clicks: c.clicks, linkClicks: c.linkClicks, landingViews: c.landingViews, state: c.state, paidBy: c.paidBy })), total: sumTotals(meta.days.slice(-range.days), (d) => d.spend) } : null,
     ads: ads && ads.ok ? { currency: ads.currency, campaigns: ads.campaigns.map((c) => ({ name: c.name, spend: c.cost, impressions: c.impressions, clicks: c.clicks, state: c.state, paidBy: c.paidBy })), total: sumTotals(ads.days.slice(-range.days), (d) => d.cost) } : null,
     gaCampaigns: ga && ga.ok ? ga.campaigns : null,
     gaTruncated: ga && ga.ok ? ga.campaignsTruncated : false,

@@ -1,5 +1,6 @@
 // '한눈에' 퍼널 계산(순수 함수). 광고 노출 → 광고 클릭 → 사이트 실사용자(봇 제외) → 실제 결제.
 import { fxRates, planCurrency } from "@/lib/fx";
+import type { PlacementMix } from "@/lib/meta";
 type Day = { date?: string; impressions: number; clicks: number };
 type SpendDay = Day & { spend?: number; cost?: number };
 
@@ -34,6 +35,8 @@ export function buildOverview(input: {
   ads: { days: SpendDay[]; currency: string } | null;
   realUsers: number | null; // GA4 봇 제외 조회 기간 활성 사용자
   botUsers?: number | null; // GA4 봇 의심으로 뺀 사용자
+  datacenterUsers?: number | null; // 그중 데이터센터 도시(진짜 봇에 가까움). 나머지는 '참여 5초 미만 국가'(바로 나간 사람 포함)
+  placements?: PlacementMix | null; // 메타 지면별 광고비(봇 의심일 때 행동 제안을 실제 지면에 맞춘다)
   internalUsers?: number | null; // 본인(운영자) 접속으로 뺀 사용자(도시 기준). 0·null 이면 표시 안 함
   orders: number | null; // 조회 기간 실제 결제 건수
   days: number; // 조회 기간 일수(광고 일별 행의 마지막 N일을 쓴다)
@@ -104,7 +107,7 @@ export function buildOverview(input: {
             detail: "하루는 표본이 작아 '봇 의심·낭비 의심·결제 없음' 같은 결론을 내리지 않습니다. 아래 시간별 그래프는 어떤 시간대에 광고비·클릭·사용자가 움직였는지 보는 용도입니다.",
             action: "추세 판단은 7일 이상으로 보고, 오늘은 새로 켠 캠페인이 제대로 돌기 시작했는지(노출·클릭이 붙는지)만 확인한다.",
           }
-        : verdictFor({ impressions, clicks, users: input.realUsers, orders: input.orders, bots: input.botUsers ?? null, spend, currency: plan.currency ?? "KRW", signups: input.signups ?? null, primary: input.primary ?? "orders" }),
+        : verdictFor({ impressions, clicks, users: input.realUsers, orders: input.orders, bots: input.botUsers ?? null, datacenter: input.datacenterUsers ?? null, placements: input.placements ?? null, googleSpend: input.ads ? sum(lastN(input.ads.days), (d) => d.cost ?? 0) : 0, spend, currency: plan.currency ?? "KRW", signups: input.signups ?? null, primary: input.primary ?? "orders" }),
     spend,
     currency: plan.currency ?? "KRW",
     spendNote,
@@ -155,17 +158,38 @@ function meaningFor(key: string, rate: number | null, value: number | null, prev
   return null;
 }
 
-function verdictFor(x: { impressions: number | null; clicks: number | null; users: number | null; orders: number | null; bots: number | null; spend: number | null; currency: string; signups: number | null; primary: "signups" | "orders" }): Verdict | null {
+// 봇 의심일 때 할 일: 실제 지면 구성을 보고 고른다. 지출 없는 지면(예: 오디언스 네트워크 0원)을 끄라고 하지 않는다.
+const AN_SHARE = 0.05; // 오디언스 네트워크가 이 비중을 넘으면 그 지면부터
+const FB_SHARE = 0.4; // 페이스북 지면이 이 비중을 넘으면 인스타 전용을 권한다
+export function botAction(placements: PlacementMix | null, googleSpend: number): string {
+  const google = googleSpend > 0 ? " 구글은 검색 파트너·디스플레이 확장을 끈다." : "";
+  if (!placements) return `메타는 오디언스 네트워크 지면을 끄고 국가를 판매 국가로 좁힌다.${google}`;
+  const share = (p: string) => placements.filter((x) => x.platform === p).reduce((a, x) => a + x.share, 0);
+  const pct = (r: number) => `${Math.round(r * 100)}%`;
+  const an = share("audience_network");
+  const fb = share("facebook");
+  if (an >= AN_SHARE) return `메타 광고비의 ${pct(an)}가 오디언스 네트워크(앱 속 배너)에 쓰였다 — 이 지면을 끈다.${google}`;
+  if (fb >= FB_SHARE) return `오디언스 네트워크 지출은 ${an > 0 ? pct(an) : "없다"}. 대신 메타 광고비의 ${pct(fb)}가 페이스북 지면에 쓰였다. GA4에서 fb / paid와 ig / paid의 참여율을 견줘 짧은 방문이 페이스북 쪽이면, 부스트·광고를 인스타그램 전용으로 바꾼다.${google}`;
+  return `메타 지면은 문제없어 보인다(오디언스 네트워크 ${pct(an)}, 페이스북 ${pct(fb)}). 의심 방문이 몰린 국가를 타깃에서 빼고, 랜딩 첫 화면이 바로 뜨는지 확인한다.${google}`;
+}
+
+function verdictFor(x: { impressions: number | null; clicks: number | null; users: number | null; orders: number | null; bots: number | null; datacenter: number | null; placements: PlacementMix | null; googleSpend: number; spend: number | null; currency: string; signups: number | null; primary: "signups" | "orders" }): Verdict | null {
   const { impressions, clicks, users, orders, bots } = x;
   const k = (v: number) => v.toLocaleString("ko-KR");
   const won = (v: number) => (x.currency === "KRW" ? `${k(Math.round(v))}원` : `${v.toFixed(2)} ${x.currency}`);
   if (users !== null && bots && bots > users) {
     const share = bots / (bots + users);
+    // 의심 사용자 대부분이 데이터센터 도시가 아니라 '평균 참여 5초 미만 국가'면 봇보다 바로 나간 사람일 수 있다 — 그렇게 말한다.
+    const dc = Math.min(bots, x.datacenter ?? 0);
+    const quick = bots - dc;
+    const mostlyQuick = x.datacenter !== null && quick > dc;
     return {
       level: "bad",
-      headline: `사이트 방문의 ${Math.round(share * 100)}%가 봇 의심`,
-      detail: `GA4에 찍힌 사용자 ${k(bots + users)}명 중 실제 사람으로 보이는 건 ${k(users)}명뿐이다. 광고비가 사람이 아닌 트래픽에 쓰이고 있을 가능성이 크다.`,
-      action: "메타는 오디언스 네트워크 지면을, 구글은 검색 파트너·디스플레이 확장을 끄고 국가를 판매 국가로 좁힌다.",
+      headline: mostlyQuick ? `사이트 방문의 ${Math.round(share * 100)}%가 몇 초 만에 나감 (봇 의심 포함)` : `사이트 방문의 ${Math.round(share * 100)}%가 봇 의심`,
+      detail: mostlyQuick
+        ? `GA4 사용자 ${k(bots + users)}명 중 ${k(quick)}명은 평균 참여 5초 미만 국가에서, ${k(dc)}명은 데이터센터 도시에서 왔다. 대부분은 봇이라기보다 광고를 누르고 바로 나간 사람일 수 있다.`
+        : `GA4에 찍힌 사용자 ${k(bots + users)}명 중 실제 사람으로 보이는 건 ${k(users)}명뿐이다. 광고비가 사람이 아닌 트래픽에 쓰이고 있을 가능성이 크다.`,
+      action: botAction(x.placements, x.googleSpend),
       adSide: true,
     };
   }

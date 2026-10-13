@@ -18,8 +18,22 @@ const sum = <T,>(xs: T[], f: (x: T) => number) => xs.reduce((a, x) => a + f(x), 
 const pctTxt = (r: number) => `${r > 0 ? "+" : ""}${Math.round(r * 100)}%`;
 const CHANGE = 0.3; // 직전 기간 대비 이만큼 움직이면 알린다
 
+const MIN_CPC_CLICKS = 20; // 이보다 클릭이 적은 캠페인의 클릭당 비용은 표본이 작아 출렁인다
+type CpcCampaign = { name: string; spend: number; clicks: number; currency: string };
+
+// 클릭당 비용 상승이 클릭 적은 소액 캠페인 탓인지: 클릭이 충분한 캠페인만 보면 직전 기간 수준이고, 오른 건 소액 캠페인일 때.
+export function smallCampaignCpc(campaigns: CpcCampaign[], prevCpc: number): { big: CpcCampaign[]; small: CpcCampaign[] } | null {
+  const spent = campaigns.filter((c) => c.spend > 0);
+  const big = spent.filter((c) => c.clicks >= MIN_CPC_CLICKS);
+  const small = spent.filter((c) => c.clicks < MIN_CPC_CLICKS && (!c.clicks || c.spend / c.clicks > prevCpc * (1 + CHANGE)));
+  if (!big.length || !small.length) return null;
+  const bigCpc = sum(big, (c) => c.spend) / sum(big, (c) => c.clicks);
+  return bigCpc / prevCpc - 1 < CHANGE ? { big, small } : null;
+}
+
 // 클릭당 비용이 직전 기간보다 크게 오르면 경고. 그 채널 캠페인이 이미 모두 꺼져 있으면 경고 대신 과거 기록(info)으로 낮춘다.
-function cpcCheck<T extends Day>(area: string, days: T[], n: number, cost: (d: T) => number, stopped: { spend: number; currency: string } | null): ActionItem | null {
+// 클릭 많은 캠페인은 그대로인데 소액 캠페인이 평균을 끌어올린 경우도 경고 대신 참고(info)로 낮춘다.
+function cpcCheck<T extends Day>(area: string, days: T[], n: number, cost: (d: T) => number, stopped: { spend: number; currency: string } | null, campaigns: CpcCampaign[] = []): ActionItem | null {
   const cur = days.slice(-n);
   const prev = days.slice(-2 * n, -n);
   const cc = sum(cur, (d) => d.clicks);
@@ -28,7 +42,29 @@ function cpcCheck<T extends Day>(area: string, days: T[], n: number, cost: (d: T
   const r = sum(cur, cost) / cc / (sum(prev, cost) / pc) - 1;
   if (r < CHANGE) return null;
   if (stopped) return { level: "info", area, title: `이미 중지됨 — 클릭당 비용 ${pctTxt(r)} (직전 기간 대비)`, action: `이 채널 캠페인은 이미 모두 꺼져 있어 할 일 없음 — 과거 기록(중지 전 지출 ${fmtValue(stopped.spend, "won", stopped.currency)}).` };
+  const small = smallCampaignCpc(campaigns, sum(prev, cost) / pc);
+  if (small) {
+    const cpc = (c: CpcCampaign) => (c.clicks ? `클릭당 ${fmtValue(c.spend / c.clicks, "won", c.currency)}` : `${fmtValue(c.spend, "won", c.currency)}에 클릭 0`);
+    const list = (cs: CpcCampaign[]) => cs.slice(0, 3).map((c) => `'${c.name}'(${cpc(c)})`).join(", ");
+    return { level: "info", area, title: `클릭당 비용 ${pctTxt(r)} (직전 기간 대비) — 클릭 적은 소액 캠페인 탓`, action: `클릭이 충분한 캠페인 ${list(small.big)}은 직전 기간 수준이다. 평균을 올린 건 클릭 ${MIN_CPC_CLICKS}회 미만인 ${list(small.small)} — 표본이 작아 아직 판단하지 않는다.` };
+  }
   return { level: "warn", area, title: `클릭당 비용 ${pctTxt(r)} (직전 기간 대비)`, action: "비용이 오른 캠페인을 표에서 찾아 예산을 줄이거나 소재를 바꾼다." };
+}
+
+// 직전 기간 방문자 감소가 급증일 몇 개 탓인지: 직전 기간 하루 중앙값의 SPIKE_MULT배를 넘는 날을 빼고 하루 평균으로 다시 견준다.
+export const SPIKE_MULT = 3;
+export function spikeDrop(prevDays: { date: string; visitors: number }[], cur: number): { spikes: { date: string; visitors: number }[]; rest: number } | null {
+  if (!prevDays.length) return null;
+  const sorted = prevDays.map((d) => d.visitors).sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  const spikes = prevDays.filter((d) => d.visitors > Math.max(median * SPIKE_MULT, 20));
+  const rest = prevDays.filter((d) => !spikes.includes(d));
+  if (!spikes.length || !rest.length) return null;
+  const restAvg = sum(rest, (d) => d.visitors) / rest.length;
+  const curAvg = cur / prevDays.length; // 두 기간 길이는 같다
+  if (restAvg <= 0) return null;
+  const r = curAvg / restAvg - 1;
+  return r > -CHANGE ? { spikes, rest: r } : null;
 }
 
 export function buildActions(x: {
@@ -85,7 +121,12 @@ export function buildActions(x: {
     if (a.ok) {
       const cur = sum(a.days.slice(-x.days), (d) => d.visitors);
       const prev = sum(a.days.slice(0, -x.days), (d) => d.visitors);
-      if (x.days > 1 && prev > 20 && cur / prev - 1 <= -CHANGE) out.push({ level: "warn", area: "Vercel", title: `사이트 방문자 ${pctTxt(cur / prev - 1)} (직전 기간 대비)`, action: "광고가 꺼졌는지, 배포 뒤 페이지가 깨졌는지부터 확인한다." });
+      if (x.days > 1 && prev > 20 && cur / prev - 1 <= -CHANGE) {
+        const sp = spikeDrop(a.days.slice(0, -x.days), cur);
+        out.push(sp
+          ? { level: "info", area: "Vercel", title: `사이트 방문자 ${pctTxt(cur / prev - 1)} (직전 기간 대비) — 직전 기간 급증일 탓`, action: `직전 기간에 평소의 ${SPIKE_MULT}배가 넘는 날이 있었다(${sp.spikes.map((d) => `${d.date.slice(5).replace("-", "/")} ${d.visitors.toLocaleString("ko-KR")}명`).join(", ")}). 이 날들을 빼면 ${pctTxt(sp.rest)}로 크게 줄지 않았다. 급증 원인(광고·외부 링크·봇)만 확인하면 된다.` }
+          : { level: "warn", area: "Vercel", title: `사이트 방문자 ${pctTxt(cur / prev - 1)} (직전 기간 대비)`, action: "광고가 꺼졌는지, 배포 뒤 페이지가 깨졌는지부터 확인한다." });
+      }
     }
   }
 
@@ -103,11 +144,11 @@ export function buildActions(x: {
   // 광고 효율
   // 1일 보기는 표본이 작아 직전 기간 대비 경고를 만들지 않는다(클릭 몇 번으로 비용이 크게 출렁인다).
   if (x.meta?.ok && x.days > 1) {
-    const c = cpcCheck("메타", x.meta.days, x.days, (d) => d.spend, channelStopped("meta"));
+    const c = cpcCheck("메타", x.meta.days, x.days, (d) => d.spend, channelStopped("meta"), x.meta.campaigns.map((m) => ({ name: m.name, spend: m.spend, clicks: m.clicks, currency: x.meta && x.meta.ok ? x.meta.currency : "KRW" })));
     if (c) out.push(c);
   }
   if (x.ads?.ok && x.days > 1) {
-    const c = cpcCheck("구글 광고", x.ads.days, x.days, (d) => d.cost, channelStopped("google"));
+    const c = cpcCheck("구글 광고", x.ads.days, x.days, (d) => d.cost, channelStopped("google"), x.ads.campaigns.map((m) => ({ name: m.name, spend: m.cost, clicks: m.clicks, currency: x.ads && x.ads.ok ? x.ads.currency : "KRW" })));
     if (c) out.push(c);
   }
 

@@ -8,7 +8,7 @@ import { isStopped, type CampaignState } from "@/lib/campaign-state";
 export type Channel = "meta" | "google";
 export type Verdict = "good" | "warn" | "bad" | "hold";
 
-export type AdCampaignIn = { name: string; spend: number; impressions: number; clicks: number; linkClicks?: number; landingViews?: number; state?: CampaignState; paidBy?: string };
+export type AdCampaignIn = { name: string; id?: string; spend: number; impressions: number; clicks: number; linkClicks?: number; landingViews?: number; state?: CampaignState; paidBy?: string };
 export type GaCampaignRow = { campaign: string; sourceMedium: string; sessions: number; engagedSessions: number; engagementSec: number };
 
 export type EffectRow = {
@@ -143,7 +143,8 @@ export function buildEffect(input: { meta: ChannelIn; ads: ChannelIn; gaCampaign
     const crossNetwork = rows.some((g) => norm(g.campaign) === norm("(cross-network)"));
     for (const c of side.campaigns) {
       const ambiguous = (keyCount.get(`${side.channel}|${norm(c.name)}`) ?? 0) > 1;
-      const hits = ambiguous ? [] : rows.filter((g) => norm(g.campaign) === norm(c.name));
+      // 인스타 앱 부스트는 GA4에 캠페인 이름 대신 메타 캠페인 ID(숫자)로 들어온다 — ID가 같아도 같은 캠페인으로 잇는다.
+      const hits = ambiguous ? [] : rows.filter((g) => norm(g.campaign) === norm(c.name) || (!!c.id && g.campaign.trim() === c.id));
       const sessions = hits.reduce((a, g) => a + g.sessions, 0);
       const engaged = Math.min(sessions, hits.reduce((a, g) => a + g.engagedSessions, 0));
       pre.push({

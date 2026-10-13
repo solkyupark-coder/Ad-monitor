@@ -6,6 +6,7 @@
 //   AD_REASSIGN_LINK_HOSTS="topogenesis.xyz=>topogenesis"              광고 링크 도메인(하위 도메인 포함)이 이거면 그 브랜드로(기본값 포함)
 //   AD_REASSIGN_EXCEPT="topography; topo-house"                       이름에 이게 있으면 옮기지 않는다(예외)
 //   AD_REASSIGN_DEFAULTS=off                                          기본 규칙(topo, topogenesis.xyz)을 끈다
+import type { Placement } from "@/lib/meta";
 import type { BrandId } from "@/lib/platforms";
 import type { CampaignState } from "@/lib/campaign-state";
 import type { AdHour } from "@/lib/hourly";
@@ -22,6 +23,8 @@ export type MovedAd = {
   to: BrandId; // 실제로 광고한 브랜드
   account: string; // 광고 계정 이름 또는 ID
   name: string;
+  id?: string; // 메타 캠페인 ID(GA4에서 부스트를 잇는 데 쓴다)
+  placements?: Placement[]; // 메타 지면 비중
   currency: string;
   spend: number;
   impressions: number;

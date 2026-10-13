@@ -34,6 +34,7 @@ export function buildOverview(input: {
   ads: { days: SpendDay[]; currency: string } | null;
   realUsers: number | null; // GA4 봇 제외 조회 기간 활성 사용자
   botUsers?: number | null; // GA4 봇 의심으로 뺀 사용자
+  suspect?: SuspectContext | null; // 봇 의심의 출처를 말하기 위한 근거(데이터센터 비중·유료 소스별 참여·메타 노출 위치)
   internalUsers?: number | null; // 본인(운영자) 접속으로 뺀 사용자(도시 기준). 0·null 이면 표시 안 함
   orders: number | null; // 조회 기간 실제 결제 건수
   days: number; // 조회 기간 일수(광고 일별 행의 마지막 N일을 쓴다)
@@ -104,7 +105,7 @@ export function buildOverview(input: {
             detail: "하루는 표본이 작아 '봇 의심·낭비 의심·결제 없음' 같은 결론을 내리지 않습니다. 아래 시간별 그래프는 어떤 시간대에 광고비·클릭·사용자가 움직였는지 보는 용도입니다.",
             action: "추세 판단은 7일 이상으로 보고, 오늘은 새로 켠 캠페인이 제대로 돌기 시작했는지(노출·클릭이 붙는지)만 확인한다.",
           }
-        : verdictFor({ impressions, clicks, users: input.realUsers, orders: input.orders, bots: input.botUsers ?? null, spend, currency: plan.currency ?? "KRW", signups: input.signups ?? null, primary: input.primary ?? "orders" }),
+        : verdictFor({ impressions, clicks, users: input.realUsers, orders: input.orders, bots: input.botUsers ?? null, suspect: input.suspect ?? null, spend, currency: plan.currency ?? "KRW", signups: input.signups ?? null, primary: input.primary ?? "orders" }),
     spend,
     currency: plan.currency ?? "KRW",
     spendNote,
@@ -155,18 +156,69 @@ function meaningFor(key: string, rate: number | null, value: number | null, prev
   return null;
 }
 
-function verdictFor(x: { impressions: number | null; clicks: number | null; users: number | null; orders: number | null; bots: number | null; spend: number | null; currency: string; signups: number | null; primary: "signups" | "orders" }): Verdict | null {
+// 봇 의심 결론의 근거. '어디서 온 짧은 방문인가'를 데이터로 말하고, 근거 없는 지면을 탓하지 않으려고 쓴다.
+export type SuspectContext = {
+  datacenterUsers: number; // 데이터센터 도시(Ashburn 등) — 사람이 아님
+  lowEngagementUsers: number; // 평균 참여가 짧은 국가 — 사람일 수도 있음(바로 나간 방문)
+  paidRows: { campaign: string; sourceMedium: string; sessions: number; engaged: number }[]; // GA4 유료 유입 캠페인×소스(ig / paid, fb / paid …). campaign은 사람이 읽는 이름
+  placements: { platform: string; position: string; spend: number; clicks: number }[] | null; // 메타 노출 위치별 지출
+  googleLive: boolean; // 구글 광고가 이 기간 집행 중(지출 있고 꺼지지 않음)
+};
+
+const LOW_RATE = 0.5; // 유료 유입 참여율이 이보다 낮으면 '대부분 바로 나감'
+const MIN_ROW_SESSIONS = 5;
+const POSITION_LABEL: Record<string, string> = { feed: "피드", facebook_reels: "릴스", facebook_stories: "스토리", instream_video: "인스트림 영상", marketplace: "마켓플레이스" };
+const isFb = (sm: string) => /^(fb|facebook|m\.facebook\.com|l\.facebook\.com|lm\.facebook\.com|facebook\.com)\s*\//i.test(sm.trim());
+const isIg = (sm: string) => /^(ig|instagram|instagram\.com|l\.instagram\.com)\s*\//i.test(sm.trim());
+
+// 봇 의심 결론의 행동 제안: 실제로 짧은 방문을 만든 곳(캠페인·노출 위치)을 짚는다.
+export function suspectAction(s: SuspectContext | null): { action: string; adSide: boolean; humanShort: boolean } {
+  const generic = "GA4 소스/매체별 참여를 보고 짧은 방문이 어느 광고·지면에서 왔는지부터 확인한다.";
+  if (!s) return { action: generic, adSide: false, humanShort: false };
+  const parts: string[] = [];
+  const humanShort = s.datacenterUsers + s.lowEngagementUsers > 0 && s.lowEngagementUsers >= s.datacenterUsers; // 대부분 '짧게 머문 사람'이지 데이터센터 봇이 아님
+  const pl = s.placements ?? [];
+  const plSpend = pl.reduce((a, p) => a + p.spend, 0);
+  const plClicks = pl.reduce((a, p) => a + p.clicks, 0);
+  const onPlatform = (name: string) => pl.filter((p) => p.platform === name);
+  const pct = (v: number, t: number) => `${Math.round((v / t) * 100)}%`;
+  const an = onPlatform("audience_network").reduce((a, p) => a + p.spend, 0);
+  if (plSpend > 0 && an / plSpend >= 0.05) parts.push(`메타 광고비의 ${pct(an, plSpend)}가 오디언스 네트워크(외부 앱)에 쓰였다 — 이 지면을 끈다.`);
+  // 유료 유입 중 대부분 바로 나간 캠페인×소스(방문 많은 순)
+  const short = s.paidRows.filter((r) => r.sessions >= MIN_ROW_SESSIONS && r.engaged / r.sessions < LOW_RATE).sort((a, b) => b.sessions - a.sessions);
+  const label = (c: string) => { const t = c.replace(/^Instagram (post|게시물):\s*/i, "").split("\n")[0]; return t.length > 24 ? `${t.slice(0, 23)}…` : t; };
+  const where = (sm: string) => (isFb(sm) ? "페이스북" : isIg(sm) ? "인스타그램" : sm.trim());
+  if (short.length) {
+    parts.push(`짧은 방문이 몰린 광고: ${short.slice(0, 2).map((r) => `'${label(r.campaign)}' ${where(r.sourceMedium)} 방문 ${r.sessions}회 중 참여 ${r.engaged}회`).join(", ")}.`);
+    const fbSpend = onPlatform("facebook").reduce((a, p) => a + p.spend, 0);
+    const fbClicks = onPlatform("facebook").reduce((a, p) => a + p.clicks, 0);
+    if (short.some((r) => isFb(r.sourceMedium)) && plSpend > 0 && fbSpend / plSpend >= 0.2) {
+      const top = onPlatform("facebook").sort((a, b) => b.spend - a.spend)[0];
+      parts.push(`메타 광고비의 ${pct(fbSpend, plSpend)}가 페이스북${top ? `(주로 ${POSITION_LABEL[top.position] ?? top.position})` : ""}에 쓰였고${plClicks ? ` 클릭의 ${pct(fbClicks, plClicks)}가 거기서 나왔다` : ""} — 노출 위치를 인스타그램으로 한정한다.`);
+    }
+    if (isIg(short[0].sourceMedium)) parts.push("인스타그램 쪽은 지면보다 소재·타깃(국가·관심사) 문제다 — 첫 장면과 타깃 국가를 좁혀 본다.");
+  }
+  if (s.googleLive && !parts.length) parts.push("구글은 검색 파트너·디스플레이 확장을 끄고 국가를 판매 국가로 좁힌다.");
+  if (s.datacenterUsers > 0 && !humanShort) parts.push(`데이터센터 도시 방문 ${s.datacenterUsers.toLocaleString("ko-KR")}명은 사람이 아니다(광고와 무관한 크롤러일 수 있음).`);
+  return { action: parts.length ? parts.join(" ") : generic, adSide: parts.length > 0 && (short.length > 0 || an > 0 || s.googleLive), humanShort };
+}
+
+function verdictFor(x: { impressions: number | null; clicks: number | null; users: number | null; orders: number | null; bots: number | null; suspect?: SuspectContext | null; spend: number | null; currency: string; signups: number | null; primary: "signups" | "orders" }): Verdict | null {
   const { impressions, clicks, users, orders, bots } = x;
   const k = (v: number) => v.toLocaleString("ko-KR");
   const won = (v: number) => (x.currency === "KRW" ? `${k(Math.round(v))}원` : `${v.toFixed(2)} ${x.currency}`);
   if (users !== null && bots && bots > users) {
     const share = bots / (bots + users);
+    const why = suspectAction(x.suspect ?? null);
+    // 대부분이 데이터센터가 아니라 '몇 초 만에 나간 방문'이면 봇이라고 단정하지 않는다(페이스북 피드 클릭 등 사람이 바로 나간 경우가 많다).
     return {
-      level: "bad",
-      headline: `사이트 방문의 ${Math.round(share * 100)}%가 봇 의심`,
-      detail: `GA4에 찍힌 사용자 ${k(bots + users)}명 중 실제 사람으로 보이는 건 ${k(users)}명뿐이다. 광고비가 사람이 아닌 트래픽에 쓰이고 있을 가능성이 크다.`,
-      action: "메타는 오디언스 네트워크 지면을, 구글은 검색 파트너·디스플레이 확장을 끄고 국가를 판매 국가로 좁힌다.",
-      adSide: true,
+      level: why.adSide || !why.humanShort ? "bad" : "warn",
+      headline: why.humanShort ? `사이트 방문의 ${Math.round(share * 100)}%가 몇 초 만에 나감(봇 의심 포함)` : `사이트 방문의 ${Math.round(share * 100)}%가 봇 의심`,
+      detail: why.humanShort
+        ? `GA4 사용자 ${k(bots + users)}명 중 ${k(bots)}명이 평균 참여 5초 미만 국가·데이터센터에서 왔다. 대부분은 데이터센터 봇이 아니라 광고를 누르고 바로 나간 방문이다.`
+        : `GA4에 찍힌 사용자 ${k(bots + users)}명 중 실제 사람으로 보이는 건 ${k(users)}명뿐이다. 광고비가 사람이 아닌 트래픽에 쓰이고 있을 가능성이 크다.`,
+      action: why.action,
+      adSide: why.adSide,
     };
   }
   if (clicks && users !== null && users / clicks < ARRIVE_LOW) {

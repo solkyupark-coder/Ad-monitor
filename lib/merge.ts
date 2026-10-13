@@ -12,7 +12,7 @@ const NAME: Record<BrandId, string> = { houscaper: "Houscaper", topogenesis: "To
 export const paidByLabel = (from: BrandId) => `${NAME[from]} 계정에서 결제됨`;
 
 // 옮겨 온 캠페인도 받는 브랜드 그래프의 '켜고 끈 날짜' 계산에 들어간다.
-const movedSeries = (use: MovedAd[]): CampaignSeries[] => use.map((m) => ({ name: m.name, state: m.state, days: m.days.map((d) => ({ date: d.date, spend: d.spend })) }));
+const movedSeries = (use: MovedAd[]): CampaignSeries[] => use.map((m) => ({ name: m.name, state: m.state, days: m.days.map((d) => ({ date: d.date, spend: d.spend, clicks: d.clicks })) }));
 
 // 1일 보기 시간별: 자체 시간별에 옮겨 온 캠페인의 시간별을 더한다. 자체 소스가 없어도(일 합계만 있어도) 옮겨 온 쪽 시간별만으로 만든다. 읽지 못한 게 있으면 null.
 function mergeHours(base: AdHour[] | null, hasBase: boolean, use: MovedAd[], range: DateRange): AdHour[] | null {
@@ -70,7 +70,7 @@ export function mergeMetaMoved(view: BrandId, own: MetaSummary | null, others: (
   notes.push(`다른 브랜드 계정에서 결제된 이 브랜드 광고 ${use.length}개를 합쳤습니다.`);
   if (converted.length) notes.push(convNote(converted, currency));
   if (skipped.length) notes.push(`통화가 달라(${currency}) 환율을 몰라 합치지 못한 캠페인 ${skipped.length}개: ${skipped.map((m) => `${m.name}(${m.currency})`).join(", ")} — FX_RATES로 환율을 추가하세요.`);
-  const add: MetaCampaign[] = use.map((m) => ({ name: m.name, spend: m.spend, impressions: m.impressions, clicks: m.clicks, linkClicks: m.linkClicks, landingViews: m.landingViews, account: m.account, status: m.status, state: m.state, promo: true, paidBy: paidByLabel(m.from), orig: m.orig }));
+  const add: MetaCampaign[] = use.map((m) => ({ id: m.id, name: m.name, spend: m.spend, impressions: m.impressions, clicks: m.clicks, linkClicks: m.linkClicks, landingViews: m.landingViews, account: m.account, status: m.status, state: m.state, promo: true, paidBy: paidByLabel(m.from), orig: m.orig }));
   const campaigns = [...(keepBase ? baseOk.campaigns : []), ...add].sort((a, b) => b.spend - a.spend);
   return {
     ok: true,
@@ -83,6 +83,7 @@ export function mergeMetaMoved(view: BrandId, own: MetaSummary | null, others: (
     moved: [],
     series: [...(keepBase ? baseOk.series : []), ...movedSeries(use)],
     hours: mergeHours(keepBase ? baseOk.hours : null, !!keepBase, use, range),
+    placements: keepBase ? (baseOk.placements ?? null) : null, // 옮겨 온 캠페인의 노출 위치는 읽지 않는다(근사치)
   };
 }
 

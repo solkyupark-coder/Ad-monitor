@@ -8,7 +8,8 @@ import { revenueDays, revenueSummary, type RevenueSummary } from "@/lib/revenue"
 import { vercelSummary, type VercelSummary } from "@/lib/vercel";
 import { demoAds, demoGa4, demoMeta, demoOn, demoRevenue, demoRevenueDays, demoRevenueHours, demoSignups, demoVercel, demoYoutube } from "@/lib/demo";
 import { buildOverview, type Overview } from "@/lib/overview";
-import { buildEffect, type EffectReport } from "@/lib/effect";
+import { buildEffect, channelOf, type EffectReport } from "@/lib/effect";
+import { isStopped } from "@/lib/campaign-state";
 import { buildActions, type ActionItem } from "@/lib/actions";
 import { mergeAdsMoved, mergeMetaMoved } from "@/lib/merge";
 import { buildCombo, buildHourCombo, type ComboData } from "@/lib/combo";
@@ -80,6 +81,21 @@ export async function loadDashboard(brand: BrandId, range: DateRange, skip: { yo
     ads: ads && ads.ok ? { days: ads.days, currency: ads.currency } : null,
     realUsers: ga && ga.ok ? ga.real.activeUsers : null,
     botUsers: ga && ga.ok ? ga.split.suspectUsers : null,
+    suspect: ga && ga.ok
+      ? {
+          datacenterUsers: ga.split.datacenterUsers,
+          lowEngagementUsers: ga.split.lowEngagementUsers,
+          // 부스트는 GA4에 캠페인 ID(숫자)로 찍히므로 메타 캠페인 이름으로 바꿔 보여 준다.
+          paidRows: (ga.campaigns ?? []).filter((g) => channelOf(g.sourceMedium)).map((g) => ({
+            campaign: (meta && meta.ok ? meta.campaigns.find((c) => c.id && c.id === g.campaign.trim())?.name : undefined) ?? g.campaign,
+            sourceMedium: g.sourceMedium,
+            sessions: g.sessions,
+            engaged: g.engagedSessions,
+          })),
+          placements: meta && meta.ok ? meta.placements ?? null : null,
+          googleLive: !!(ads && ads.ok && ads.days.slice(-range.days).some((d) => d.cost > 0) && ads.campaigns.some((c) => !isStopped(c.state))),
+        }
+      : null,
     internalUsers: ga && ga.ok && ga.internal ? ga.internal.users : null,
     signups: signups && signups.ok ? signups.count : null,
     signupsPrev: signups && signups.ok ? signups.countPrev : null,
@@ -89,7 +105,7 @@ export async function loadDashboard(brand: BrandId, range: DateRange, skip: { yo
     today: range.today,
   });
   const effect = buildEffect({
-    meta: meta && meta.ok ? { currency: meta.currency, campaigns: meta.campaigns.map((c) => ({ name: c.name, spend: c.spend, impressions: c.impressions, clicks: c.clicks, linkClicks: c.linkClicks, landingViews: c.landingViews, state: c.state, paidBy: c.paidBy })), total: sumTotals(meta.days.slice(-range.days), (d) => d.spend) } : null,
+    meta: meta && meta.ok ? { currency: meta.currency, campaigns: meta.campaigns.map((c) => ({ id: c.id, name: c.name, spend: c.spend, impressions: c.impressions, clicks: c.clicks, linkClicks: c.linkClicks, landingViews: c.landingViews, state: c.state, paidBy: c.paidBy })), total: sumTotals(meta.days.slice(-range.days), (d) => d.spend) } : null,
     ads: ads && ads.ok ? { currency: ads.currency, campaigns: ads.campaigns.map((c) => ({ name: c.name, spend: c.cost, impressions: c.impressions, clicks: c.clicks, state: c.state, paidBy: c.paidBy })), total: sumTotals(ads.days.slice(-range.days), (d) => d.cost) } : null,
     gaCampaigns: ga && ga.ok ? ga.campaigns : null,
     gaTruncated: ga && ga.ok ? ga.campaignsTruncated : false,

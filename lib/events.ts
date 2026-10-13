@@ -7,7 +7,7 @@ import { isStopped, type CampaignState } from "@/lib/campaign-state";
 import type { BrandId } from "@/lib/platforms";
 
 export type AdEvent = { date: string; kind: "stop" | "start" | "note"; label: string; full: string; inferred: boolean };
-export type CampaignSeries = { name: string; state?: CampaignState; days: { date: string; spend: number }[] };
+export type CampaignSeries = { name: string; state?: CampaignState; days: { date: string; spend: number; clicks?: number }[] }; // clicks: 캠페인별 클릭당 비용 비교용(없을 수 있음)
 
 const MAX_EVENTS = 6;
 const MIN_QUIET_DAYS = 2; // 시작으로 보려면 그 전에 이만큼 지출이 없던 날이 있어야 한다(기간 첫머리에 이미 돌던 캠페인은 제외)

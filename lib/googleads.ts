@@ -211,7 +211,7 @@ export async function googleAdsSummary(brand: BrandId, range: DateRange): Promis
         hours = subtractHours(acct.map(({ id: _id, ...h }) => h), moved.map((m) => m.hours ?? []));
       }
     }
-    const series: CampaignSeries[] = campaigns.map((c) => ({ name: c.name, state: c.state, days: ((c.id && dailyById.get(c.id)) || []).map((d) => ({ date: d.date, spend: d.spend })) }));
+    const series: CampaignSeries[] = campaigns.map((c) => ({ name: c.name, state: c.state, days: ((c.id && dailyById.get(c.id)) || []).map((d) => ({ date: d.date, spend: d.spend, clicks: d.clicks })) }));
     return { ok: true, accountName: info?.descriptiveName ?? "", currency, days, campaigns: campaigns.map(({ id: _id, ...c }) => c), notes, moved, series, hours };
   } catch (e) {
     logFailure("google-ads", brand, `network ${e instanceof Error ? e.message : String(e)}`);

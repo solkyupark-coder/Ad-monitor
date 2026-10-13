@@ -8,7 +8,7 @@ import { isStopped, type CampaignState } from "@/lib/campaign-state";
 export type Channel = "meta" | "google";
 export type Verdict = "good" | "warn" | "bad" | "hold";
 
-export type AdCampaignIn = { name: string; spend: number; impressions: number; clicks: number; linkClicks?: number; landingViews?: number; state?: CampaignState; paidBy?: string };
+export type AdCampaignIn = { id?: string; name: string; spend: number; impressions: number; clicks: number; linkClicks?: number; landingViews?: number; state?: CampaignState; paidBy?: string };
 export type GaCampaignRow = { campaign: string; sourceMedium: string; sessions: number; engagedSessions: number; engagementSec: number };
 
 export type EffectRow = {
@@ -132,7 +132,8 @@ export function buildEffect(input: { meta: ChannelIn; ads: ChannelIn; gaCampaign
   const gaOf = (channel: Channel) => gaCampaigns.filter((g) => channelOf(g.sourceMedium) === channel);
 
   // 1) 캠페인: 같은 채널의 GA 행 중 캠페인 이름이 같은 것만 잇는다(이름 비교는 공백·기호 무시).
-  //    같은 채널에서 이름이 겹치는 광고 캠페인이 둘 이상이면 같은 GA 행을 두 번 세게 되므로 연결하지 않는다.
+  //    부스트(인스타·페북 게시물 홍보)는 GA4에 이름 대신 캠페인 ID(숫자)가 utm_campaign으로 찍혀서, ID가 같아도 잇는다.
+  //    같은 채널에서 이름이 겹치는 광고 캠페인이 둘 이상이면 같은 GA 행을 두 번 세게 되므로 이름으로는 연결하지 않는다(ID로는 잇는다).
   const keyCount = new Map<string, number>();
   for (const side of sides) for (const c of side.campaigns) keyCount.set(`${side.channel}|${norm(c.name)}`, (keyCount.get(`${side.channel}|${norm(c.name)}`) ?? 0) + 1);
   type Pre = EffectRow & { unmatched: boolean; ambiguous: boolean; crossNetwork: boolean };
@@ -142,8 +143,9 @@ export function buildEffect(input: { meta: ChannelIn; ads: ChannelIn; gaCampaign
     const named = rows.some((g) => g.campaign && !/^\((not set|direct|organic|referral)\)$/i.test(g.campaign));
     const crossNetwork = rows.some((g) => norm(g.campaign) === norm("(cross-network)"));
     for (const c of side.campaigns) {
-      const ambiguous = (keyCount.get(`${side.channel}|${norm(c.name)}`) ?? 0) > 1;
-      const hits = ambiguous ? [] : rows.filter((g) => norm(g.campaign) === norm(c.name));
+      const byId = (g: GaCampaignRow) => !!c.id && g.campaign.trim() === c.id;
+      const ambiguous = (keyCount.get(`${side.channel}|${norm(c.name)}`) ?? 0) > 1 && !rows.some(byId);
+      const hits = ambiguous ? [] : rows.filter((g) => byId(g) || ((keyCount.get(`${side.channel}|${norm(c.name)}`) ?? 0) === 1 && norm(g.campaign) === norm(c.name)));
       const sessions = hits.reduce((a, g) => a + g.sessions, 0);
       const engaged = Math.min(sessions, hits.reduce((a, g) => a + g.engagedSessions, 0));
       pre.push({

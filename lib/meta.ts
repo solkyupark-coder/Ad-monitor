@@ -8,6 +8,7 @@ import { addHours, metaHourOf, subtractHours, type AdHour } from "@/lib/hourly";
 
 export type MetaDay = { date: string; spend: number; impressions: number; clicks: number };
 export type MetaCampaign = {
+  id?: string; // 메타 캠페인 ID — 부스트는 GA4에 이름 대신 이 숫자가 utm_campaign으로 찍힌다
   name: string;
   spend: number;
   impressions: number;
@@ -35,8 +36,11 @@ export type MetaAccount = {
   reason?: string;
 };
 export type MetaSummary =
-  | { ok: true; accountName: string; currency: string; days: MetaDay[]; campaigns: MetaCampaign[]; accounts: MetaAccount[]; notes: string[]; moved: MovedAd[]; series: CampaignSeries[]; hours: AdHour[] | null }
+  | { ok: true; accountName: string; currency: string; days: MetaDay[]; campaigns: MetaCampaign[]; accounts: MetaAccount[]; notes: string[]; moved: MovedAd[]; series: CampaignSeries[]; hours: AdHour[] | null; placements?: MetaPlacement[] | null }
   | { ok: false; reason: string };
+
+// 노출 위치별(페이스북 피드·인스타 릴스·오디언스 네트워크 …) 조회 기간 지출·클릭. 못 읽으면 null.
+export type MetaPlacement = { platform: string; position: string; spend: number; clicks: number };
 
 export type MetaTotals = { spend: number; impressions: number; clicks: number; ctr: number; cpc: number; cpm: number };
 
@@ -98,7 +102,7 @@ function configuredAccounts(prefix: string): { main: string | null; extra: strin
 // 인스타·페이스북 '게시물 홍보(부스트)'로 만들어진 캠페인 이름 패턴(비즈니스 스위트 기본 이름 포함).
 const PROMO_NAME = /(^|[\s\[(])(instagram|facebook|ig|fb)\s*(post|reel|story)|boost|부스트|홍보|게시물 홍보|promotion/i;
 
-type AcctOk = { ok: true; name: string; currency: string; days: MetaDay[]; campaigns: (Row & { status?: string; state?: CampaignState })[] };
+type AcctOk = { ok: true; name: string; currency: string; days: MetaDay[]; campaigns: (Row & { status?: string; state?: CampaignState })[]; placements: MetaPlacement[] | null };
 type AcctResult = AcctOk | { ok: false; reason: string };
 
 function graphReason(body: GraphError): string {
@@ -116,12 +120,13 @@ async function fetchAccount(token: string, account: string, range: DateRange): P
   const get = (path: string) => fetch(`${API}/${account}${path}`, { headers, next: { revalidate: 600 } });
   const enc = (v: unknown) => encodeURIComponent(JSON.stringify(v));
   try {
-    const [infoRes, dayRes, campRes, statusRes, adsRes] = await Promise.all([
+    const [infoRes, dayRes, campRes, statusRes, adsRes, placeRes] = await Promise.all([
       get("?fields=name,currency"),
       get(`/insights?fields=spend,impressions,clicks&time_increment=1&limit=1000&time_range=${enc({ since: range.prev.from, until: range.to })}`),
       get(`/insights?fields=campaign_id,campaign_name,spend,impressions,clicks,inline_link_clicks,actions&level=campaign&limit=50&time_range=${enc({ since: range.from, until: range.to })}`),
       get(`/campaigns?fields=id,effective_status,configured_status&limit=500&effective_status=${enc(CAMPAIGN_STATUSES)}`),
       get(`/ads?fields=campaign_id,effective_status&limit=500&effective_status=${enc(AD_STATUSES)}`),
+      get(`/insights?fields=spend,clicks&breakdowns=publisher_platform,platform_position&limit=200&time_range=${enc({ since: range.from, until: range.to })}`),
     ]);
     const failed = [infoRes, dayRes].find((r) => !r.ok);
     if (failed) return { ok: false, reason: graphReason((await failed.json().catch(() => ({}))) as GraphError) };
@@ -140,7 +145,11 @@ async function fetchAccount(token: string, account: string, range: DateRange): P
           return { ...r, status: st?.effective, state: metaState({ effective: st?.effective, configured: st?.configured, ads: r.campaign_id ? adStatus.get(r.campaign_id) : undefined }) };
         })
       : [];
-    return { ok: true, name: info.name ?? "", currency: info.currency ?? "KRW", days, campaigns };
+    // 노출 위치별 지출은 '짧은 방문이 어느 지면에서 왔나'를 말하는 데만 쓴다. 못 읽어도 나머지는 그대로.
+    const placements = placeRes.ok
+      ? (((await placeRes.json()) as { data?: { publisher_platform?: string; platform_position?: string; spend?: string; clicks?: string }[] }).data ?? []).map((r) => ({ platform: r.publisher_platform ?? "unknown", position: r.platform_position ?? "unknown", spend: Number(r.spend ?? 0), clicks: Number(r.clicks ?? 0) }))
+      : null;
+    return { ok: true, name: info.name ?? "", currency: info.currency ?? "KRW", days, campaigns, placements };
   } catch {
     return { ok: false, reason: "조회 실패(네트워크)" };
   }
@@ -240,6 +249,7 @@ async function findMoved(token: string, id: string, res: AcctOk, brand: BrandId,
     from: brand,
     to: d.to,
     account: res.name || id,
+    id: r.campaign_id,
     name: r.campaign_name ?? "(이름 없음)",
     currency: res.currency,
     spend: Number(r.spend ?? 0),
@@ -368,7 +378,7 @@ export async function metaSummary(brand: BrandId, range: DateRange): Promise<Met
 
   // 그래프의 '켜고 끈 날짜' 추정에 쓰는 캠페인별 일별 지출(옮겨 간 캠페인은 받는 브랜드가 가져간다).
   const series: CampaignSeries[] = included.flatMap(({ res }, i) =>
-    res.campaigns.map((c) => ({ name: c.campaign_name ?? "(이름 없음)", state: c.state, days: (dailyBy[i].get(c.campaign_id as string) ?? []).map((d) => ({ date: d.date, spend: d.spend })) })),
+    res.campaigns.map((c) => ({ name: c.campaign_name ?? "(이름 없음)", state: c.state, days: (dailyBy[i].get(c.campaign_id as string) ?? []).map((d) => ({ date: d.date, spend: d.spend, clicks: d.clicks })) })),
   );
 
   // 같은 날짜끼리 합친다(모든 계정이 같은 날짜 목록을 가진다).
@@ -389,6 +399,7 @@ export async function metaSummary(brand: BrandId, range: DateRange): Promise<Met
       res.campaigns.map((r) => {
         const name = r.campaign_name ?? "(이름 없음)";
         return {
+          id: r.campaign_id,
           name,
           spend: Number(r.spend ?? 0),
           impressions: Number(r.impressions ?? 0),
@@ -408,5 +419,15 @@ export async function metaSummary(brand: BrandId, range: DateRange): Promise<Met
   if (!anySpend && !campaigns.length && !extra.length && !business) {
     notes.push(`이 기간 Ads Manager 계정(${main})에 광고가 없습니다. 인스타그램 프로모션(부스트)은 다른 광고 계정에 있을 수 있어요 — ${prefix}_META_BUSINESS_ID(자동 탐색) 또는 ${prefix}_META_EXTRA_AD_ACCOUNT_IDS(직접 지정)를 설정하세요.`);
   }
-  return { ok: true, accountName: included.map((i) => i.res.name || i.id).join(" · "), currency: baseCurrency, days, campaigns, accounts, notes, moved, series, hours };
+  // 노출 위치별 지출: 읽은 계정끼리 더한다(한 계정이라도 못 읽었으면 null). 다른 브랜드로 옮긴 캠페인 몫은 빼지 못한 근사치.
+  const placements: MetaPlacement[] | null = included.every((i) => i.res.placements)
+    ? [...included.flatMap((i) => i.res.placements ?? []).reduce((m, p) => {
+        const k = `${p.platform}|${p.position}`;
+        const cur = m.get(k) ?? { platform: p.platform, position: p.position, spend: 0, clicks: 0 };
+        cur.spend += p.spend;
+        cur.clicks += p.clicks;
+        return m.set(k, cur);
+      }, new Map<string, MetaPlacement>()).values()].sort((a, b) => b.spend - a.spend)
+    : null;
+  return { ok: true, accountName: included.map((i) => i.res.name || i.id).join(" · "), currency: baseCurrency, days, campaigns, accounts, notes, moved, series, hours, placements };
 }

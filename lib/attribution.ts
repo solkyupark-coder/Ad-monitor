@@ -21,6 +21,7 @@ export type MovedAd = {
   from: BrandId; // 결제된(광고 계정이 있는) 브랜드
   to: BrandId; // 실제로 광고한 브랜드
   account: string; // 광고 계정 이름 또는 ID
+  id?: string; // 캠페인 ID(메타 부스트는 GA4에 이 숫자로 찍힌다)
   name: string;
   currency: string;
   spend: number;

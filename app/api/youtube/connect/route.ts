@@ -10,8 +10,9 @@ export async function GET(req: NextRequest) {
   const brand = req.nextUrl.searchParams.get("brand");
   if (!isBrand(brand)) return NextResponse.json({ error: "brand가 올바르지 않습니다" }, { status: 400 });
   if (!process.env.GOOGLE_OAUTH_CLIENT_ID) return NextResponse.json({ error: "GOOGLE_OAUTH_CLIENT_ID가 없습니다" }, { status: 503 });
+  const upload = req.nextUrl.searchParams.get("mode") === "upload"; // 업로드 전용 토큰 발급
   const state = newState();
-  const res = NextResponse.redirect(googleAuthorizeUrl(state, youtubeRedirectUri(req.nextUrl.origin)));
-  res.cookies.set(YOUTUBE_STATE_COOKIE, `${state}.${brand}`, { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 600 });
+  const res = NextResponse.redirect(googleAuthorizeUrl(state, youtubeRedirectUri(req.nextUrl.origin), upload));
+  res.cookies.set(YOUTUBE_STATE_COOKIE, `${state}.${brand}${upload ? ".upload" : ""}`, { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 600 });
   return res;
 }

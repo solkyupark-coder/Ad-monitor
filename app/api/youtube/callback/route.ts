@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 import { BRANDS } from "@/lib/platforms";
 import { esc, oauthPage, tokenBox } from "@/lib/oauth-page";
 import { isBrand } from "@/lib/reddit-oauth";
-import { exchangeGoogleCode, mineChannel, YOUTUBE_ANALYTICS_SCOPE, YOUTUBE_SCOPES, YOUTUBE_STATE_COOKIE, youtubeRedirectUri } from "@/lib/youtube-oauth";
+import { exchangeGoogleCode, mineChannel, YOUTUBE_ANALYTICS_SCOPE, YOUTUBE_SCOPES, YOUTUBE_STATE_COOKIE, YOUTUBE_UPLOAD_SCOPE, youtubeRedirectUri } from "@/lib/youtube-oauth";
 
 export const dynamic = "force-dynamic";
 
@@ -15,12 +15,25 @@ export async function GET(req: NextRequest) {
   if (error) return page("유튜브 연결이 취소됐습니다", `<p>구글이 돌려준 사유: <code>${esc(error)}</code></p>`, 400);
   const code = sp.get("code");
   const state = sp.get("state");
-  const [savedState, brand] = (req.cookies.get(YOUTUBE_STATE_COOKIE)?.value ?? "").split(".");
+  const [savedState, brand, mode] = (req.cookies.get(YOUTUBE_STATE_COOKIE)?.value ?? "").split(".");
   if (!code || !state || !savedState || state !== savedState || !isBrand(brand ?? null)) {
     return page("유튜브 연결을 확인할 수 없습니다", "<p>연결 요청이 만료됐거나 다른 창에서 시작됐습니다(10분 제한). 대시보드의 '유튜브 연결하기'를 다시 눌러 주세요.</p>", 400);
   }
   const r = await exchangeGoogleCode(code, youtubeRedirectUri(req.nextUrl.origin));
   if (!r.ok) return page("유튜브 토큰 교환 실패", `<p>${esc(r.error)}</p>`, 502);
+
+  if (mode === "upload") {
+    // 업로드 권한만 요청한 흐름: 채널 조회(읽기 권한 필요)는 하지 않고, 권한 범위만 확인해 토큰을 한 번 보여 준다.
+    const ok = r.scope.split(/\s+/).includes(YOUTUBE_UPLOAD_SCOPE);
+    const name = `YT_UPLOAD_TOKEN_${brand === "topogenesis" ? "TOPO" : "HOUSCAPER"}`;
+    return page(
+      ok ? "유튜브 업로드 토큰 발급 완료" : "유튜브 업로드 권한이 빠졌습니다",
+      ok
+        ? `<ul><li class="ok">권한: youtube.upload (영상 올리기 전용, 조회·삭제 불가)</li></ul>${tokenBox(name, r.refreshToken)}<p class="warn">ad-monitor-mcp 프로젝트에 넣어야 합니다(이 대시보드가 아닙니다). 채팅이나 문서에 붙여넣지 마세요.</p>`
+        : "<p>동의 화면에서 업로드 항목을 허용하지 않았습니다. 다시 연결하세요.</p>",
+      ok ? 200 : 400,
+    );
+  }
 
   const prefix = BRANDS.find((b) => b.id === brand)!.prefix;
   const label = BRANDS.find((b) => b.id === brand)!.label;

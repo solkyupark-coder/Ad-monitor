@@ -3,6 +3,8 @@ import type { GoogleAdsSummary } from "@/lib/googleads";
 import type { RevenueSummary } from "@/lib/revenue";
 import type { DateRange } from "@/lib/range";
 import type { VercelSummary, VercelTop } from "@/lib/vercel";
+import type { EtsySummary } from "@/lib/etsy";
+import type { BrandId } from "@/lib/platforms";
 import { adsEngagement, byCountry, compareRevenue, compareVisitors, findGoogleCpc, LOW_ENGAGEMENT_SEC } from "@/lib/traffic";
 import { fmtCompact, fmtValue } from "@/lib/format";
 import { TrendChart } from "@/components/TrendChart";
@@ -527,6 +529,98 @@ export function VercelPanel({ v, ga, range }: { v: VercelSummary; ga: Ga4Summary
             })}
           </ul>
         </details>
+      )}
+    </section>
+  );
+}
+
+// 엣시 샵: 기간 주문·판매액(취소·전액 환불 제외)과 샵 누적 현황. 샵 방문 수는 엣시 API가 주지 않는다.
+export function EtsyPanel({ e, brand, range }: { e: EtsySummary; brand: BrandId; range: DateRange }) {
+  if (!e.ok) {
+    return (
+      <section className="panel">
+        <h2>엣시 샵</h2>
+        <p className="note">{e.reason}</p>
+        {e.reconnect && (
+          <p>
+            <a className="connect" href={`/api/etsy/connect?brand=${brand}`}>
+              엣시 다시 연결
+            </a>
+            <span className="fine"> 엣시 승인 후 새 refresh token을 한 번 보여 줍니다.</span>
+          </p>
+        )}
+      </section>
+    );
+  }
+  const prev = range.today ? null : e.prev;
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <h2>엣시 샵</h2>
+        <p className="meta">
+          {e.shopUrl ? (
+            <a href={e.shopUrl} target="_blank" rel="noreferrer">
+              {e.shopName}
+            </a>
+          ) : (
+            e.shopName
+          )}{" "}
+          · {range.label}
+        </p>
+      </div>
+      <div className="kpis">
+        <Stat label="엣시 주문" value={e.cur.orders} kind="count" hero>
+          <Delta cur={e.cur.orders} prev={prev?.orders ?? null} goodWhen="up" />
+        </Stat>
+        <Stat label="엣시 판매액" value={fmtValue(e.cur.amount, "won", e.currency)}>
+          <Delta cur={e.cur.amount} prev={prev?.amount ?? null} goodWhen="up" />
+        </Stat>
+        <Stat label="샵 즐겨찾기 (누적)" value={e.favorers == null ? "–" : n(e.favorers)} />
+        <Stat label="판매 중 상품" value={e.activeListings == null ? "–" : n(e.activeListings)} />
+      </div>
+      <p className="fine">
+        판매액은 구매자가 낸 총액(배송비·세금 포함, 엣시 수수료 차감 전)이고 취소·전액 환불 주문은 뺐습니다
+        {e.cur.canceled > 0 ? ` (이 기간 ${n(e.cur.canceled)}건 제외)` : ""}.
+        {e.soldTotal != null ? ` 누적 판매 ${n(e.soldTotal)}개` : ""}
+        {e.reviews ? ` · 리뷰 ${n(e.reviews.count)}개${e.reviews.average != null ? ` (평균 ${e.reviews.average.toFixed(1)})` : ""}` : ""}. 샵 방문 수는 엣시 API로 받을 수 없어 Shop Manager에서 확인하세요.
+      </p>
+      {e.truncated && <p className="fine">주문이 많아 일부(500건)만 집계됐습니다.</p>}
+      {range.days > 1 && (
+        <div className="charts">
+          <div>
+            <h3>일별 주문</h3>
+            <TrendChart points={e.days.map((d) => ({ date: d.date, value: d.orders }))} kind="count" color="s1" name="주문" />
+          </div>
+          <div>
+            <h3>주문 국가</h3>
+            {e.countries.length ? (
+              <BarList color="s2" items={e.countries.slice(0, 8).map((c) => ({ id: c.country, label: c.country, value: c.orders, display: `${n(c.orders)}건`, note: `${c.country} 주문 ${n(c.orders)}건` }))} />
+            ) : (
+              <p className="note">이 기간 주문 없음</p>
+            )}
+          </div>
+        </div>
+      )}
+      {e.topItems.length > 0 && (
+        <>
+          <h3>이 기간 많이 팔린 상품</h3>
+          <BarList color="s1" items={e.topItems.map((t, i) => ({ id: `t${i}`, label: t.title, value: t.quantity, display: `${n(t.quantity)}개`, note: t.title }))} />
+        </>
+      )}
+      {e.listings.length > 0 && (
+        <>
+          <h3>{e.listings.some((l) => l.views != null) ? "상품별 누적 조회 (많은 순)" : "판매 중 상품 (즐겨찾기 많은 순)"}</h3>
+          <BarList
+            color="s2"
+            items={e.listings.map((l, i) => ({
+              id: `l${i}`,
+              label: l.title,
+              value: l.views ?? l.favorers ?? 0,
+              display: l.views != null ? n(l.views) : `♥ ${n(l.favorers ?? 0)}`,
+              note: `${l.views != null ? `조회 ${n(l.views)} · ` : ""}즐겨찾기 ${n(l.favorers ?? 0)}`,
+            }))}
+          />
+        </>
       )}
     </section>
   );

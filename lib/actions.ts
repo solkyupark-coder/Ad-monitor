@@ -5,6 +5,7 @@ import type { MetaSummary } from "@/lib/meta";
 import type { RevenueSummary } from "@/lib/revenue";
 import type { VercelSummary } from "@/lib/vercel";
 import type { YoutubeSummary } from "@/lib/youtube";
+import type { EtsySummary } from "@/lib/etsy";
 import { compareRevenue } from "@/lib/traffic";
 import { effectHeadline, effectHistory, type EffectReport } from "@/lib/effect";
 import { isStopped } from "@/lib/campaign-state";
@@ -109,6 +110,7 @@ export function buildActions(x: {
   rev: RevenueSummary | null;
   vercel: VercelSummary | null;
   youtube: YoutubeSummary | null;
+  etsy?: EtsySummary | null;
   pending: string[]; // 연결 안 된 플랫폼 이름
   verdict?: { level: string; headline: string; action: string; adSide?: boolean } | null; // '한눈에 보기' 결론
   effect?: EffectReport | null; // 광고 효과 판정(광고비 중 낭비·측정 불가 비중)
@@ -143,6 +145,7 @@ export function buildActions(x: {
   failed("실매출", x.rev as { ok: boolean; reason?: string } | null);
   failed("Vercel", x.vercel as { ok: boolean; reason?: string } | null);
   failed("유튜브", x.youtube as { ok: boolean; reason?: string } | null);
+  failed("엣시", (x.etsy ?? null) as { ok: boolean; reason?: string } | null);
   if (x.youtube?.ok && x.youtube.analytics && !x.youtube.analytics.ok) {
     out.push({ level: "warn", area: "유튜브", title: `기간별 지표 없음: ${x.youtube.analytics.reason}`, action: x.youtube.analytics.reconnect ? "유튜브 패널의 '유튜브 다시 연결'로 새 refresh token을 받아 Vercel에 넣는다. 그동안 채널 현황(구독자·최근 영상)만 보인다." : "안내대로 설정을 고친다. 그동안 채널 현황(구독자·최근 영상)만 보인다." });
   }

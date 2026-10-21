@@ -4,7 +4,7 @@ import type { YoutubeAnalytics, YoutubeSummary } from "@/lib/youtube";
 import { fmtCompact, fmtDate, fmtValue } from "@/lib/format";
 import { TrendChart } from "@/components/TrendChart";
 import { BarList, Delta, Stat } from "@/components/ui";
-import { AdsPanel, Ga4Panel, RevenuePanel, VercelPanel } from "@/components/panels";
+import { AdsPanel, EtsyPanel, Ga4Panel, RevenuePanel, VercelPanel } from "@/components/panels";
 import { ActionsPanel, OverviewPanel } from "@/components/Overview";
 import { EffectPanel } from "@/components/EffectPanel";
 import { LevelIcon } from "@/components/icons";
@@ -379,7 +379,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Que
   const brand: BrandId = BRANDS.some((b) => b.id === q) ? (q as BrandId) : "houscaper";
   const range = parseRange(sp);
   const d = await loadDashboard(brand, range);
-  const { meta, yt, ga, rev, ads, vc, overview, effect, actions, pending } = d;
+  const { meta, yt, ga, rev, ads, vc, etsy, overview, effect, actions, pending } = d;
 
   const exportJson = exportData(d);
   const urgent = actions.filter((a) => a.level === "bad").length;
@@ -413,9 +413,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<Que
       node: (
         <>
           {rev && <RevenuePanel real={rev} ga={ga} range={range} />}
+          {etsy && <EtsyPanel e={etsy} brand={brand} range={range} />}
           {ga && <Ga4Panel g={ga} range={range} />}
           {vc && <VercelPanel v={vc} ga={ga} range={range} />}
-          {!rev && !ga && !vc && <p className="note panel">매출·사이트 소스가 아직 연결되지 않았습니다. '연결' 탭을 확인하세요.</p>}
+          {!rev && !ga && !vc && !etsy && <p className="note panel">매출·사이트 소스가 아직 연결되지 않았습니다. '연결' 탭을 확인하세요.</p>}
         </>
       ),
     },
@@ -462,6 +463,14 @@ export default async function Home({ searchParams }: { searchParams: Promise<Que
                       레딧 연결하기
                     </a>
                     <span className="fine"> 레딧 승인 후 refresh token을 한 번 보여 줍니다.</span>
+                  </p>
+                )}
+                {platform.id === "etsy" && missing.length === 1 && missing[0].endsWith("_ETSY_REFRESH_TOKEN") && (
+                  <p>
+                    <a className="connect" href={`/api/etsy/connect?brand=${brand}`}>
+                      엣시 연결하기
+                    </a>
+                    <span className="fine"> 엣시 승인 후 refresh token을 한 번 보여 줍니다.</span>
                   </p>
                 )}
                 <p className="label">Vercel 환경변수에 필요:</p>

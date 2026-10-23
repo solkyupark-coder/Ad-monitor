@@ -114,11 +114,11 @@ export function SearchPanel({ s, y, brand, range }: { s: SearchSummary; y: Youtu
             {lag && <span className="fine"> · {lag}</span>}
           </p>
         </div>
-        <div className="summary-box">
+        <ul className="summary-box">
           {summaryLines(s, range).map((l) => (
-            <p key={l}>{l}</p>
+            <li key={l}>{l}</li>
           ))}
-        </div>
+        </ul>
         <div className="kpis">
           <Stat label="검색 결과에 보인 횟수" value={cur.impressions} kind="count" hero>
             <Delta cur={cur.impressions} prev={prev?.impressions ?? null} goodWhen="up" />
@@ -146,7 +146,7 @@ export function SearchPanel({ s, y, brand, range }: { s: SearchSummary; y: Youtu
               <h3>일별 검색 결과에 보인 횟수</h3>
               <TrendChart points={s.days.map((d) => ({ date: d.date, value: d.impressions }))} kind="count" color="s1" name="보인 횟수" />
             </div>
-            <div>
+            <div className="hide-m">
               <h3>일별 눌러서 들어온 수</h3>
               <TrendChart points={s.days.map((d) => ({ date: d.date, value: d.clicks }))} kind="count" color="s2" name="들어온 수" />
             </div>
@@ -176,7 +176,20 @@ export function SearchPanel({ s, y, brand, range }: { s: SearchSummary; y: Youtu
         {s.queries.length > 0 && (
           <>
             <h3>어떤 검색어에서 보였나</h3>
-            <div className="scroll">
+            <ul className="q-list">
+              {s.queries.map((q) => (
+                <li key={q.key}>
+                  <span className="q-term">
+                    {q.key}
+                    {q.brand && <span className="vchip hold">브랜드 이름</span>}
+                  </span>
+                  <span className="q-nums">
+                    보임 <strong>{n(q.impressions)}</strong> · 들어옴 <strong>{n(q.clicks)}</strong> · {q.position.toFixed(0)}위
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <div className="scroll q-table">
               <table className="data">
                 <thead>
                   <tr>

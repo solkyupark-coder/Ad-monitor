@@ -418,3 +418,25 @@ body:has(dialog[open]) { overflow: hidden; } /* 시트가 열려 있으면 뒤 �
 .steps { font-size: 14px; line-height: 1.7; padding-left: 20px; margin: 8px 0; }
 .steps li { margin: 6px 0; }
 .acct-name a { color: inherit; }
+
+/* 폰 화면 정리: 날짜 직접 고르기는 접고, 검색 탭은 표 대신 줄 목록 */
+.custom-d { display: none; }
+.q-list { display: none; list-style: none; margin: 8px 0 0; padding: 0; }
+.summary-box { list-style: none; }
+.summary-box li { margin: 2px 0; }
+@media (max-width: 640px) {
+  .custom.desk { display: none; }
+  .custom-d { display: block; width: 100%; font-size: 13px; color: var(--ink2); }
+  .custom-d summary { cursor: pointer; padding: 6px 2px; }
+  .custom-d .custom { margin-top: 6px; }
+  .hide-m { display: none; }
+  .q-table { display: none; }
+  .q-list { display: block; }
+  .q-list li { display: flex; flex-direction: column; gap: 3px; padding: 10px 0; border-top: 1px solid var(--grid); font-size: 14px; }
+  .q-term { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-weight: 600; overflow-wrap: anywhere; }
+  .q-nums { font-size: 13px; color: var(--ink2); font-variant-numeric: tabular-nums; }
+  .summary-box { padding: 10px 12px 10px 26px; list-style: disc; font-size: 13.5px; line-height: 1.55; }
+  .summary-box li { margin: 4px 0; }
+  .acct-list li { flex-direction: column; gap: 4px; }
+  .acct-list .acct-val { font-size: 13px; }
+}

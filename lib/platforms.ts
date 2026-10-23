@@ -1,6 +1,6 @@
 // D1: 플랫폼별 직접 연동(Windsor 미사용). 연결 상태는 환경변수 존재 여부로만 판단한다 — 값은 절대 화면/로그에 내지 않는다.
 export type BrandId = "houscaper" | "topogenesis";
-export type PlatformId = "meta" | "google_ads" | "youtube" | "ga4" | "revenue" | "purchase_db" | "vercel" | "reddit" | "tiktok";
+export type PlatformId = "meta" | "google_ads" | "youtube" | "ga4" | "revenue" | "purchase_db" | "vercel" | "reddit" | "tiktok" | "search_console";
 
 export const BRANDS: { id: BrandId; label: string; prefix: string }[] = [
   { id: "houscaper", label: "하우스케이퍼", prefix: "HOUSCAPER" },
@@ -67,6 +67,17 @@ export const PLATFORMS: PlatformDef[] = [
     shared: [],
     perBrand: ["SUPABASE_URL", "SUPABASE_READONLY_KEY"],
     note: "브랜드 앱의 purchase 테이블(읽기 전용 키, RLS로 select만). Polar가 있으면 실매출은 Polar 기준이고 이 값은 대조용으로 함께 보이며, Polar가 없으면 이 값이 실매출이 된다.",
+  },
+  {
+    id: "search_console",
+    label: "구글 검색 (Search Console)",
+    shared: ["GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET"],
+    perBrand: ["SEARCH_CONSOLE_REFRESH_TOKEN"],
+    fallback: {
+      houscaper: ["GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "SEARCH_CONSOLE_REFRESH_TOKEN"],
+      topogenesis: ["GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "SEARCH_CONSOLE_REFRESH_TOKEN"],
+    },
+    note: "구글 검색에 몇 번 보였고 몇 명이 눌렀는지, 어떤 페이지가 검색에 나오는지. '구글 검색 연결하기'로 읽기 전용 토큰을 받는다(webmasters.readonly). 두 사이트가 같은 구글 계정에 있으면 SEARCH_CONSOLE_REFRESH_TOKEN 하나로 둘 다 본다. Google Cloud에서 'Google Search Console API' 사용 설정 필요.",
   },
   {
     id: "vercel",
@@ -137,6 +148,8 @@ export const OPTIONAL_ENV = [
   "DASHBOARD_UTC_OFFSET_HOURS", // 실매출·가입 날짜 경계. 기본 9(한국)
   "DASHBOARD_TIMEZONE", // 가입 집계 함수에 넘기는 IANA 시간대(기본 Asia/Seoul, 오프셋 설정이 있으면 그에 맞춤)
   "REDDIT_REDIRECT_URI", // 레딧 앱에 등록한 redirect. 기본은 접속한 사이트 주소(루트)
+  "{BRAND}_SEARCH_CONSOLE_SITE", // Search Console 속성을 직접 지정(예: sc-domain:houscaper.xyz). 없으면 도메인으로 찾는다
+  "{BRAND}_SEARCH_BRAND_TERMS", // 브랜드 이름 검색으로 셀 말 추가(쉼표 구분)
   "YOUTUBE_REDIRECT_URI", // 구글 클라이언트에 등록한 redirect. 기본은 {사이트}/api/youtube/callback
   // 아래는 브랜드 접두사(HOUSCAPER_/TOPOGENESIS_)를 붙여 쓴다
   "{BRAND}_PURCHASE_TABLE", // 기본 purchase

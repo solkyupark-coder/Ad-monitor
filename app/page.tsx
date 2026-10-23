@@ -12,6 +12,9 @@ import { StateBadge } from "@/components/StateBadge";
 import { isStopped } from "@/lib/campaign-state";
 import { ViewTabs, type TabDef } from "@/components/ViewTabs";
 import { loadDashboard } from "@/lib/dashboard";
+import { SearchPanel } from "@/components/SearchPanel";
+import { searchSummary } from "@/lib/searchconsole";
+import { demoOn, demoSearch } from "@/lib/demo";
 import { exportData } from "@/lib/export";
 import { parseRange, PRESETS, rangeQuery, yesterdayDate, type DateRange } from "@/lib/range";
 
@@ -378,7 +381,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<Que
   const q = sp.brand;
   const brand: BrandId = BRANDS.some((b) => b.id === q) ? (q as BrandId) : "houscaper";
   const range = parseRange(sp);
-  const d = await loadDashboard(brand, range);
+  const [d, search] = await Promise.all([loadDashboard(brand, range), demoOn() ? demoSearch(range) : searchSummary(brand, range)]);
+  const searchFix = search.ok && search.checks ? search.checks.filter((c) => c.state === "warn").length : 0;
   const { meta, yt, ga, rev, ads, vc, overview, effect, actions, pending } = d;
 
   const exportJson = exportData(d);
@@ -418,6 +422,13 @@ export default async function Home({ searchParams }: { searchParams: Promise<Que
           {!rev && !ga && !vc && <p className="note panel">매출·사이트 소스가 아직 연결되지 않았습니다. '연결' 탭을 확인하세요.</p>}
         </>
       ),
+    },
+    {
+      id: "search",
+      label: "검색",
+      short: "검색",
+      badge: searchFix ? { text: `고칠 곳 ${searchFix}`, short: String(searchFix), level: "warn" } : !search.ok && search.reconnect ? { text: "연결 필요", short: "!", level: "info" } : null,
+      node: <SearchPanel s={search} y={yt} brand={brand} range={range} />,
     },
     {
       id: "ads",

@@ -110,6 +110,58 @@ function demoYoutubeAnalytics(r: DateRange, titles: string[]): YoutubeAnalytics 
       return { id: `d${i}`, title: `[데모] ${title}`, views, minutes: Math.round(views * (1.2 + i * 0.2)), avgViewSec: Math.round(72 + i * 12) };
     }),
     lastDate: days.length ? days[days.length - 1].date : null,
+    sources: [
+      { type: "SHORTS", label: "쇼츠 피드(넘겨 보다가)", views: Math.round(total * 0.71) },
+      { type: "YT_SEARCH", label: "유튜브 검색", views: Math.round(total * 0.09) },
+      { type: "YT_CHANNEL", label: "채널 페이지", views: Math.round(total * 0.08) },
+      { type: "EXT_URL", label: "바깥 링크(사이트·SNS)", views: Math.round(total * 0.07) },
+      { type: "RELATED_VIDEO", label: "다른 영상 옆 추천", views: Math.round(total * 0.05) },
+    ],
+    searchTerms: [
+      { term: "laser cut house", views: Math.round(total * 0.03) },
+      { term: "dollhouse svg", views: Math.round(total * 0.02) },
+      { term: "houscaper", views: Math.round(total * 0.02) },
+    ],
+  };
+}
+
+// 데모: 구글 검색(Search Console). 실제 수치가 아님.
+import type { SearchSummary } from "@/lib/searchconsole";
+export function demoSearch(r: DateRange): SearchSummary {
+  const all = eachDay(r.prev.from, r.to).map((date, i) => ({ date, impressions: Math.round(9 + 5 * Math.sin(i / 2) + i * 0.3), clicks: i % 3 === 0 ? 1 : 0 }));
+  const days = all.slice(-r.days);
+  const prevDays = all.slice(0, -r.days);
+  const sum = (d: typeof days) => {
+    const impressions = d.reduce((a, x) => a + x.impressions, 0);
+    const clicks = d.reduce((a, x) => a + x.clicks, 0);
+    return { impressions, clicks, ctr: impressions ? clicks / impressions : 0, position: 8.4 };
+  };
+  return {
+    ok: true,
+    site: "sc-domain:houscaper.xyz",
+    days,
+    cur: sum(days),
+    prev: r.today ? null : { ...sum(prevDays), position: 11.2 },
+    queries: [
+      { key: "houscaper", clicks: 6, impressions: 21, position: 1.2, brand: true },
+      { key: "laser cut dollhouse files", clicks: 0, impressions: 14, position: 38.5, brand: false },
+      { key: "하우스케이퍼", clicks: 2, impressions: 5, position: 1.0, brand: true },
+      { key: "glowforge miniature house", clicks: 0, impressions: 4, position: 52.1, brand: false },
+    ],
+    brandShare: { impressions: 0.59, clicks: 1 },
+    pages: [
+      { key: "/", clicks: 7, impressions: 30, position: 2.1 },
+      { key: "/styles/hanok", clicks: 1, impressions: 9, position: 21.4 },
+      { key: "/glowforge-miniature-house-svg", clicks: 0, impressions: 3, position: 44.0 },
+    ],
+    checks: [
+      { url: "https://www.houscaper.xyz/styles/viking", path: "/styles/viking", state: "out", text: "구글이 주소는 알지만 아직 안 읽어 갔어요", lastCrawl: null },
+      { url: "https://www.houscaper.xyz/", path: "/", state: "in", text: "구글 검색에 나와요", lastCrawl: "2026-10-20" },
+      { url: "https://www.houscaper.xyz/styles/hanok", path: "/styles/hanok", state: "in", text: "구글 검색에 나와요", lastCrawl: "2026-10-18" },
+    ],
+    checksNote: null,
+    organic: { sessions: 43, engaged: 33, events: [{ name: "sign_up", label: "가입", count: 9 }, { name: "export_drawing", label: "도면 내보내기", count: 4 }] },
+    lastDate: days.length > 2 ? days[days.length - 3].date : null,
   };
 }
 

@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { BRANDS } from "@/lib/platforms";
 import { esc, oauthPage, tokenBox } from "@/lib/oauth-page";
 import { isBrand } from "@/lib/reddit-oauth";
+import { listSites, pickSite, SEARCH_SCOPE, SITE_DOMAIN } from "@/lib/searchconsole";
 import { exchangeGoogleCode, mineChannel, YOUTUBE_ANALYTICS_SCOPE, YOUTUBE_SCOPES, YOUTUBE_STATE_COOKIE, YOUTUBE_UPLOAD_SCOPE, youtubeRedirectUri } from "@/lib/youtube-oauth";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +38,23 @@ export async function GET(req: NextRequest) {
 
   const prefix = BRANDS.find((b) => b.id === brand)!.prefix;
   const label = BRANDS.find((b) => b.id === brand)!.label;
+
+  if (mode === "search") {
+    // 구글 검색(Search Console) 읽기 전용 토큰: 이 계정이 볼 수 있는 사이트를 확인해 함께 보여 준다.
+    const ok = r.scope.split(/\s+/).includes(SEARCH_SCOPE);
+    if (!ok) return page("구글 검색 권한이 빠졌습니다", "<p>동의 화면에서 Search Console 항목을 허용하지 않았습니다. 다시 연결하세요.</p>", 400);
+    const sites = await listSites(r.accessToken);
+    const found = BRANDS.map((b) => ({ b, site: sites ? pickSite(sites, SITE_DOMAIN[b.id]) : null }));
+    const both = found.every((f) => f.site);
+    const items = sites === null
+      ? `<li class="warn">사이트 목록을 못 읽었습니다. Google Cloud에서 'Google Search Console API'를 사용 설정했는지 확인하세요.</li>`
+      : found.map((f) => (f.site ? `<li class="ok">${esc(f.b.label)}: <code>${esc(f.site)}</code> 확인</li>` : `<li class="warn">${esc(f.b.label)}: 이 계정의 Search Console에 사이트가 없습니다</li>`)).join("");
+    const name = both ? "SEARCH_CONSOLE_REFRESH_TOKEN" : `${prefix}_SEARCH_CONSOLE_REFRESH_TOKEN`;
+    return page(
+      "구글 검색 연결 토큰 발급 완료",
+      `<ul>${items}<li class="ok">권한: Search Console 읽기 전용</li></ul>${tokenBox(name, r.refreshToken)}${both ? "<p>두 브랜드 사이트가 모두 이 계정에 있어서, 이 값 하나로 둘 다 보입니다.</p>" : ""}<p class="warn">채팅이나 문서에 붙여넣지 마세요. 넣은 뒤 이 창을 닫으세요.</p>`,
+    );
+  }
   const expected = process.env[`${prefix}_YOUTUBE_CHANNEL_ID`] ?? "";
   const channel = await mineChannel(r.accessToken);
   const notes: string[] = [];

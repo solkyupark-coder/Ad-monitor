@@ -12,12 +12,20 @@ export function youtubeRedirectUri(origin: string): string {
   return process.env.YOUTUBE_REDIRECT_URI || `${origin.replace(/\/+$/, "")}/api/youtube/callback`;
 }
 
-export function googleAuthorizeUrl(state: string, redirectUri: string, upload = false): string {
+// mode: read(유튜브 읽기) | upload(유튜브 업로드 전용) | search(구글 검색 Search Console 읽기 전용). 같은 콜백 주소를 써서 구글 클라이언트에 주소를 더 등록하지 않아도 된다.
+export type GoogleConnectMode = "read" | "upload" | "search";
+const SCOPES_BY_MODE: Record<GoogleConnectMode, string> = {
+  read: YOUTUBE_SCOPES.join(" "),
+  upload: YOUTUBE_UPLOAD_SCOPE,
+  search: "https://www.googleapis.com/auth/webmasters.readonly",
+};
+
+export function googleAuthorizeUrl(state: string, redirectUri: string, mode: GoogleConnectMode = "read"): string {
   const q = new URLSearchParams({
     client_id: process.env.GOOGLE_OAUTH_CLIENT_ID ?? "",
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: upload ? YOUTUBE_UPLOAD_SCOPE : YOUTUBE_SCOPES.join(" "), // 읽기 전용 두 개(채널 현황 + 기간별 분석). include_granted_scopes는 보내지 않아 예전 넓은 권한이 합쳐지지 않게 한다
+    scope: SCOPES_BY_MODE[mode], // 읽기 전용 두 개(채널 현황 + 기간별 분석). include_granted_scopes는 보내지 않아 예전 넓은 권한이 합쳐지지 않게 한다
     access_type: "offline", // refresh token 받기
     prompt: "select_account consent", // 브랜드 채널 계정을 고를 수 있게, 매번 refresh token을 새로 받게
     state,

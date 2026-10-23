@@ -12,6 +12,9 @@ import { StateBadge } from "@/components/StateBadge";
 import { isStopped } from "@/lib/campaign-state";
 import { ViewTabs, type TabDef } from "@/components/ViewTabs";
 import { loadDashboard } from "@/lib/dashboard";
+import { SearchPanel } from "@/components/SearchPanel";
+import { searchSummary } from "@/lib/searchconsole";
+import { demoOn, demoSearch } from "@/lib/demo";
 import { exportData } from "@/lib/export";
 import { parseRange, PRESETS, rangeQuery, yesterdayDate, type DateRange } from "@/lib/range";
 
@@ -330,13 +333,22 @@ function YoutubePanel({ y, brand, range }: { y: YoutubeSummary; brand: BrandId; 
   );
 }
 
+function CustomRange({ brand, range, className }: { brand: BrandId; range: DateRange; className: string }) {
+  return (
+    <form method="get" action="/" data-keep-hash className={range.preset || range.today ? className : `${className} on`}>
+      <input type="hidden" name="brand" value={brand} />
+      <input type="date" name="from" defaultValue={range.from} max={yesterdayDate()} aria-label="시작일" required />
+      <span>–</span>
+      <input type="date" name="to" defaultValue={range.to} max={yesterdayDate()} aria-label="종료일" required />
+      <button type="submit">적용</button>
+    </form>
+  );
+}
+
 function RangePicker({ brand, range }: { brand: BrandId; range: DateRange }) {
   return (
     <div className="range">
       <nav className="presets" aria-label="조회 기간">
-        <a href={`/?brand=${brand}&range=today`} data-keep-hash className={range.today ? "on" : ""}>
-          오늘
-        </a>
         <a href={`/?brand=${brand}&range=1`} data-keep-hash className={range.preset === 1 ? "on" : ""}>
           어제
         </a>
@@ -346,13 +358,12 @@ function RangePicker({ brand, range }: { brand: BrandId; range: DateRange }) {
           </a>
         ))}
       </nav>
-      <form method="get" action="/" data-keep-hash className={range.preset || range.today ? "custom" : "custom on"}>
-        <input type="hidden" name="brand" value={brand} />
-        <input type="date" name="from" defaultValue={range.from} max={yesterdayDate()} aria-label="시작일" required />
-        <span>–</span>
-        <input type="date" name="to" defaultValue={range.to} max={yesterdayDate()} aria-label="종료일" required />
-        <button type="submit">적용</button>
-      </form>
+      <CustomRange brand={brand} range={range} className="custom desk" />
+      {/* 폰: 날짜 직접 고르기는 접어 둔다(화면 위쪽이 기간 설정으로 꽉 차지 않게) */}
+      <details className="custom-d" open={!range.preset && !range.today}>
+        <summary>날짜 직접 고르기</summary>
+        <CustomRange brand={brand} range={range} className="custom" />
+      </details>
       <p className="fine">
         {range.label} · 비교: {range.today ? `어제(${fmtDate(range.prev.to)}) 같은 시각까지` : range.days === 1 ? `전날(${fmtDate(range.prev.to)}) 하루` : `직전 ${range.days}일 (${fmtDate(range.prev.from)} – ${fmtDate(range.prev.to)})`}
       </p>
@@ -378,7 +389,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<Que
   const q = sp.brand;
   const brand: BrandId = BRANDS.some((b) => b.id === q) ? (q as BrandId) : "houscaper";
   const range = parseRange(sp);
-  const d = await loadDashboard(brand, range);
+  const [d, search] = await Promise.all([loadDashboard(brand, range), demoOn() ? demoSearch(range) : searchSummary(brand, range)]);
+  const searchFix = search.ok && search.checks ? search.checks.filter((c) => c.state === "warn").length : 0;
   const { meta, yt, ga, rev, ads, vc, overview, effect, actions, pending } = d;
 
   const exportJson = exportData(d);
@@ -418,6 +430,13 @@ export default async function Home({ searchParams }: { searchParams: Promise<Que
           {!rev && !ga && !vc && <p className="note panel">매출·사이트 소스가 아직 연결되지 않았습니다. '연결' 탭을 확인하세요.</p>}
         </>
       ),
+    },
+    {
+      id: "search",
+      label: "검색",
+      short: "검색",
+      badge: searchFix ? { text: `고칠 곳 ${searchFix}`, short: String(searchFix), level: "warn" } : !search.ok && search.reconnect ? { text: "연결 필요", short: "!", level: "info" } : null,
+      node: <SearchPanel s={search} y={yt} brand={brand} range={range} />,
     },
     {
       id: "ads",

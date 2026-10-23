@@ -51,7 +51,7 @@ export function primaryKpi(brand: BrandId, env: Record<string, string | undefine
   return v === "signups" || v === "orders" ? v : brand === "topogenesis" ? "signups" : "orders";
 }
 
-const DEMO_ON: PlatformId[] = ["meta", "youtube", "ga4", "revenue", "purchase_db", "vercel", "google_ads"];
+const DEMO_ON: PlatformId[] = ["meta", "youtube", "ga4", "revenue", "purchase_db", "vercel", "google_ads", "search_console"];
 
 // skip: 내보내기처럼 일부 소스만 필요할 때 불필요한 외부 호출을 건너뛴다.
 export async function loadDashboard(brand: BrandId, range: DateRange, skip: { youtube?: boolean; vercel?: boolean; combo?: boolean } = {}): Promise<Dashboard> {

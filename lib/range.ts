@@ -60,11 +60,11 @@ function build(fromMs: number, toMs: number, preset: number | null, now?: { toda
 
 export function parseRange(q: { range?: string; from?: string; to?: string }, now = Date.now()): DateRange {
   const today = todayMs(now);
-  // 오늘(지금까지): 하루가 안 끝났으니 비교는 어제 '같은 시각까지'(시간별 소스에서만 정확히 맞춘다).
-  if ((q.range ?? "").toLowerCase() === "today") return build(today, today, null, { today: true, hour: Math.floor(((now + offsetMs()) % DAY) / 3600000) });
+  // '오늘' 보기는 뺐다(2026-10-23): 하루가 안 끝났고 GA4·유튜브·검색 수치가 늦게 들어와 볼 게 없었다. 예전 링크(range=today)는 어제로 연다.
+  if ((q.range ?? "").toLowerCase() === "today") return build(today - DAY, today - DAY, 1);
   const f = parse(q.from);
   const t = parse(q.to);
-  if (f !== null && t !== null && f <= t && t <= today && (t - f) / DAY + 1 <= MAX_DAYS) return build(f, t, null);
+  if (f !== null && t !== null && f <= t && t < today && (t - f) / DAY + 1 <= MAX_DAYS) return build(f, t, null);
   const n = Number(q.range);
   const preset = n === 1 || (PRESETS as readonly number[]).includes(n) ? n : 7; // 1 = 어제 하루
   const to = today - DAY;

@@ -8,9 +8,12 @@ export type YoutubeVideo = { id: string; title: string; views: number; likes: nu
 export type YoutubeDay = { date: string; views: number; minutes: number; subsGained: number; subsLost: number };
 export type YoutubePeriod = { views: number; minutes: number; avgViewSec: number; subsNet: number; likes: number; comments: number; shares: number };
 export type YoutubeTopVideo = { id: string; title: string; views: number; minutes: number; avgViewSec: number };
+// 조회가 어디서 왔는지(유튜브 검색·쇼츠 피드·추천 등)와, 유튜브 검색에서 쓴 검색어.
+export type YoutubeSource = { type: string; label: string; views: number };
+export type YoutubeSearchTerm = { term: string; views: number };
 // 기간별 지표. 예전에 youtube.readonly만으로 발급한 토큰이면 권한이 없어 ok:false — 채널 현황은 그대로 보인다.
 export type YoutubeAnalytics =
-  | { ok: true; days: YoutubeDay[]; cur: YoutubePeriod; prev: YoutubePeriod | null; top: YoutubeTopVideo[]; lastDate: string | null }
+  | { ok: true; days: YoutubeDay[]; cur: YoutubePeriod; prev: YoutubePeriod | null; top: YoutubeTopVideo[]; lastDate: string | null; sources: YoutubeSource[] | null; searchTerms: YoutubeSearchTerm[] | null }
   | { ok: false; reason: string; reconnect: boolean };
 export type YoutubeSummary =
   | {
@@ -84,10 +87,12 @@ function analyticsFailure(status: number, reason: string): { ok: false; reason: 
 // 유튜브 분석은 보통 2~3일 늦게 채워지므로 아직 없는 날은 0으로 두고, 마지막으로 값이 있는 날을 함께 알려 준다.
 async function youtubeAnalytics(channelId: string, range: DateRange, token: string): Promise<YoutubeAnalytics> {
   const ids = `channel==${channelId}`;
-  const [daily, totals, top] = await Promise.all([
+  const [daily, totals, top, src, terms] = await Promise.all([
     report({ ids, startDate: range.prev.from, endDate: range.to, metrics: "views,estimatedMinutesWatched,subscribersGained,subscribersLost", dimensions: "day", sort: "day" }, token),
     report({ ids, startDate: range.from, endDate: range.to, metrics: "likes,comments,shares" }, token),
     report({ ids, startDate: range.from, endDate: range.to, metrics: "views,estimatedMinutesWatched,averageViewDuration", dimensions: "video", sort: "-views", maxResults: "10" }, token),
+    report({ ids, startDate: range.from, endDate: range.to, metrics: "views", dimensions: "insightTrafficSourceType", sort: "-views" }, token),
+    report({ ids, startDate: range.from, endDate: range.to, metrics: "views", dimensions: "insightTrafficSourceDetail", filters: "insightTrafficSourceType==YT_SEARCH", sort: "-views", maxResults: "10" }, token),
   ]);
   if (!daily.ok) return analyticsFailure(daily.status, daily.reason);
 
@@ -124,8 +129,34 @@ async function youtubeAnalytics(channelId: string, range: DateRange, token: stri
     prev: prevDays.length && !range.today ? periodOf(prevDays) : null,
     top: topVideos,
     lastDate: filled.length ? filled[filled.length - 1] : null,
+    sources: src.ok ? rowsOf(src.r).map((x) => ({ type: String(x.insightTrafficSourceType), label: SOURCE_LABEL[String(x.insightTrafficSourceType)] ?? String(x.insightTrafficSourceType), views: num(x.views) })).filter((x) => x.views > 0) : null,
+    searchTerms: terms.ok ? rowsOf(terms.r).map((x) => ({ term: String(x.insightTrafficSourceDetail), views: num(x.views) })).filter((x) => x.views > 0) : null,
   };
 }
+
+// 유튜브 조회 경로 이름(쉬운 말)
+const SOURCE_LABEL: Record<string, string> = {
+  YT_SEARCH: "유튜브 검색",
+  SHORTS: "쇼츠 피드(넘겨 보다가)",
+  SUBSCRIBER: "구독자 피드",
+  RELATED_VIDEO: "다른 영상 옆 추천",
+  YT_CHANNEL: "채널 페이지",
+  EXT_URL: "바깥 링크(사이트·SNS)",
+  NO_LINK_OTHER: "직접 입력·기타",
+  PLAYLIST: "재생목록",
+  YT_OTHER_PAGE: "유튜브 다른 화면",
+  NOTIFICATION: "알림",
+  ADVERTISING: "광고",
+  END_SCREEN: "영상 끝 화면",
+  ANNOTATION: "카드·주석",
+  CAMPAIGN_CARD: "캠페인 카드",
+  HASHTAGS: "해시태그",
+  SOUND_PAGE: "사운드 페이지",
+  YT_PLAYLIST_PAGE: "재생목록 페이지",
+  VIDEO_REMIXES: "리믹스",
+  LIVE_REDIRECT: "라이브 이동",
+  PRODUCT_PAGE: "제품 페이지",
+};
 
 export async function youtubeSummary(brand: BrandId, range?: DateRange): Promise<YoutubeSummary> {
   const prefix = BRANDS.find((b) => b.id === brand)!.prefix;

@@ -337,9 +337,6 @@ function RangePicker({ brand, range }: { brand: BrandId; range: DateRange }) {
   return (
     <div className="range">
       <nav className="presets" aria-label="조회 기간">
-        <a href={`/?brand=${brand}&range=today`} data-keep-hash className={range.today ? "on" : ""}>
-          오늘
-        </a>
         <a href={`/?brand=${brand}&range=1`} data-keep-hash className={range.preset === 1 ? "on" : ""}>
           어제
         </a>

@@ -15,7 +15,12 @@ export type YoutubeSummary =
 
 const API = "https://www.googleapis.com/youtube/v3";
 
+// 데이터 fetch 캐시 키에 authorization 헤더가 들어가므로, 요청마다 새 토큰을 받으면 10분 캐시가 절대 맞지 않는다.
+const tokens = new Map<string, { token: string; exp: number }>();
+
 async function accessToken(refreshToken: string): Promise<string | null> {
+  const hit = tokens.get(refreshToken);
+  if (hit && hit.exp > Date.now()) return hit.token;
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -28,8 +33,10 @@ async function accessToken(refreshToken: string): Promise<string | null> {
     cache: "no-store",
   });
   if (!res.ok) return null;
-  const json = (await res.json()) as { access_token?: string };
-  return json.access_token ?? null;
+  const json = (await res.json()) as { access_token?: string; expires_in?: number };
+  if (!json.access_token) return null;
+  tokens.set(refreshToken, { token: json.access_token, exp: Date.now() + ((json.expires_in ?? 3600) - 60) * 1000 });
+  return json.access_token;
 }
 
 async function get<T>(path: string, params: Record<string, string>, token: string): Promise<T | null> {

@@ -143,8 +143,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ b
   const demo = demoOn();
   const statuses = statusFor(brand);
   const isOn = (id: string) => demo && (id === "meta" || id === "youtube") ? true : statuses.find((s) => s.platform.id === id)?.connected;
-  const meta = isOn("meta") ? (demo ? demoMeta() : await metaSummary(brand)) : null;
-  const yt = isOn("youtube") ? (demo ? demoYoutube() : await youtubeSummary(brand)) : null;
+  const [meta, yt] = await Promise.all([
+    isOn("meta") ? (demo ? demoMeta() : metaSummary(brand)) : null,
+    isOn("youtube") ? (demo ? demoYoutube() : youtubeSummary(brand)) : null,
+  ]);
   const connectedCount = statuses.filter((s) => isOn(s.platform.id)).length;
   const pending = statuses.filter((s) => !isOn(s.platform.id));
   return (

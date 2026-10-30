@@ -1,6 +1,6 @@
 // D1: 플랫폼별 직접 연동(Windsor 미사용). 연결 상태는 환경변수 존재 여부로만 판단한다 — 값은 절대 화면/로그에 내지 않는다.
 export type BrandId = "houscaper" | "topogenesis";
-export type PlatformId = "meta" | "google_ads" | "youtube" | "ga4" | "revenue" | "purchase_db" | "vercel" | "reddit" | "tiktok" | "search_console";
+export type PlatformId = "meta" | "google_ads" | "youtube" | "ga4" | "revenue" | "purchase_db" | "vercel" | "reddit" | "tiktok" | "search_console" | "etsy";
 
 export const BRANDS: { id: BrandId; label: string; prefix: string }[] = [
   { id: "houscaper", label: "하우스케이퍼", prefix: "HOUSCAPER" },
@@ -94,6 +94,13 @@ export const PLATFORMS: PlatformDef[] = [
     note: "광고 API는 별도 접근 신청이 필요할 수 있음. refresh token은 카드의 '레딧 연결하기'로 발급(adsread, 1회 표시).",
   },
   {
+    id: "etsy",
+    label: "엣시 샵",
+    shared: ["ETSY_KEYSTRING", "ETSY_SHARED_SECRET"],
+    perBrand: ["ETSY_REFRESH_TOKEN"],
+    note: "엣시 앱(etsy.com/developers)의 Keystring·Shared secret이 필요하고, 앱 Callback URL에 {사이트}/api/etsy/callback을 등록. refresh token은 '엣시 연결하기'로 발급(읽기 전용, 1회 표시, 약 90일 유효). 주문·판매액·국가·상품은 보이지만 샵 방문 수는 엣시 API가 주지 않는다.",
+  },
+  {
     id: "tiktok",
     label: "틱톡",
     shared: ["TIKTOK_APP_ID", "TIKTOK_APP_SECRET"],
@@ -150,6 +157,7 @@ export const OPTIONAL_ENV = [
   "REDDIT_REDIRECT_URI", // 레딧 앱에 등록한 redirect. 기본은 접속한 사이트 주소(루트)
   "{BRAND}_SEARCH_CONSOLE_SITE", // Search Console 속성을 직접 지정(예: sc-domain:houscaper.xyz). 없으면 도메인으로 찾는다
   "{BRAND}_SEARCH_BRAND_TERMS", // 브랜드 이름 검색으로 셀 말 추가(쉼표 구분)
+  "ETSY_REDIRECT_URI", // 엣시 앱에 등록한 Callback URL. 기본은 {사이트}/api/etsy/callback
   "YOUTUBE_REDIRECT_URI", // 구글 클라이언트에 등록한 redirect. 기본은 {사이트}/api/youtube/callback
   // 아래는 브랜드 접두사(HOUSCAPER_/TOPOGENESIS_)를 붙여 쓴다
   "{BRAND}_PURCHASE_TABLE", // 기본 purchase

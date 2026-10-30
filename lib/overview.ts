@@ -70,9 +70,9 @@ export function buildOverview(input: {
   const raw: Omit<FunnelStep, "rateFromPrev" | "meaning">[] = [
     { key: "impressions", label: "광고 노출", note: spendNote, value: impressions },
     { key: "clicks", label: "광고 클릭", note: spendNote, value: clicks },
-    { key: "users", label: "사이트 실사용자", note: `GA4 · 봇 의심 제외${input.internalUsers ? ` · 본인 제외 ${input.internalUsers.toLocaleString("ko-KR")}명` : ""} · 광고 외 유입 포함`, value: input.realUsers },
-    ...(input.signups != null ? [{ key: "signups", label: "신규 가입", note: "Supabase 가입 수(개수만)", value: input.signups }] : []),
-    { key: "orders", label: "실제 결제", note: "Polar / Supabase 결제 완료", value: input.orders },
+    { key: "users", label: "사이트 실사용자", note: `봇 의심 빼고${input.internalUsers ? ` · 내 접속 ${input.internalUsers.toLocaleString("ko-KR")}명 빼고` : ""} · 광고 말고 온 사람도 포함`, value: input.realUsers },
+    ...(input.signups != null ? [{ key: "signups", label: "신규 가입", note: "가입한 사람 수", value: input.signups }] : []),
+    { key: "orders", label: "실제 결제", note: "결제 완료 건수", value: input.orders },
   ];
   // 1일 보기는 표본이 작아 '낭비·봇·결제 0건' 같은 단정을 하지 않는다: 단계 해석은 참고(info)로 낮춘다.
   const tone = (m: Meaning | null): Meaning | null => (m && input.days <= 1 && (m.level === "bad" || m.level === "warn") ? { ...m, level: "info", text: `표본이 작아 참고만: ${m.text}` } : m);
@@ -199,7 +199,7 @@ export function suspectAction(s: SuspectContext | null): { action: string; adSid
     if (isIg(short[0].sourceMedium)) parts.push("인스타그램 쪽은 지면보다 소재·타깃(국가·관심사) 문제다 — 첫 장면과 타깃 국가를 좁혀 본다.");
   }
   if (s.googleLive && !parts.length) parts.push("구글은 검색 파트너·디스플레이 확장을 끄고 국가를 판매 국가로 좁힌다.");
-  if (s.datacenterUsers > 0 && !humanShort) parts.push(`데이터센터 도시 방문 ${s.datacenterUsers.toLocaleString("ko-KR")}명은 사람이 아니다(광고와 무관한 크롤러일 수 있음).`);
+  if (s.datacenterUsers > 0 && !humanShort) parts.push(`서버가 몰린 도시에서 온 ${s.datacenterUsers.toLocaleString("ko-KR")}명은 사람이 아니에요(광고와 상관없는 자동 프로그램일 수 있어요).`);
   return { action: parts.length ? parts.join(" ") : generic, adSide: parts.length > 0 && (short.length > 0 || an > 0 || s.googleLive), humanShort };
 }
 
@@ -216,7 +216,7 @@ function verdictFor(x: { impressions: number | null; clicks: number | null; user
       headline: why.humanShort ? `사이트 방문의 ${Math.round(share * 100)}%가 몇 초 만에 나감(봇 의심 포함)` : `사이트 방문의 ${Math.round(share * 100)}%가 봇 의심`,
       detail: why.humanShort
         ? `GA4 사용자 ${k(bots + users)}명 중 ${k(bots)}명이 평균 참여 5초 미만 국가·데이터센터에서 왔다. 대부분은 데이터센터 봇이 아니라 광고를 누르고 바로 나간 방문이다.`
-        : `GA4에 찍힌 사용자 ${k(bots + users)}명 중 실제 사람으로 보이는 건 ${k(users)}명뿐이다. 광고비가 사람이 아닌 트래픽에 쓰이고 있을 가능성이 크다.`,
+        : `사이트에 찍힌 ${k(bots + users)}명 중 실제 사람으로 보이는 건 ${k(users)}명뿐이에요. 광고비가 사람이 아닌 방문에 쓰이고 있을 가능성이 커요.`,
       action: why.action,
       adSide: why.adSide,
     };

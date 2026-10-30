@@ -288,7 +288,7 @@ export function ComboChart({ combo, title }: { combo: ComboData; title: string }
           기간 밖 표시: {outRange.map((e) => `${fmtDate(e.date)} ${e.full}`).join(" · ")}
         </p>
       )}
-      {inRange.some((e) => e.inferred) && <p className="fine">점선 세로선은 일별 지출이 끊기거나 시작된 날로 추정한 날짜입니다(정확한 날짜는 env <code>AD_EVENT_MARKERS</code>로 찍을 수 있어요).</p>}
+      {inRange.some((e) => e.inferred) && <p className="fine">점선 세로선은 광고비가 끊기거나 시작된 날이에요(지출로 추정한 날짜).</p>}
       {combo.notes.map((t) => (
         <p key={t} className="fine">{t}</p>
       ))}

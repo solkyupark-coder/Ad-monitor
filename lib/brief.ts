@@ -135,7 +135,7 @@ function compact(d: Dashboard) {
   const meta = d.meta
     ? d.meta.ok
       ? {
-          ok: true,
+          ok: true as const,
           currency: d.meta.currency,
           spend: sumBy(d.meta.days.slice(-n), (x) => x.spend),
           spendPrev: sumBy(d.meta.days.slice(-2 * n, -n), (x) => x.spend),
@@ -147,12 +147,12 @@ function compact(d: Dashboard) {
           placements: d.meta.placements ?? null,
           notes: d.meta.notes,
         }
-      : { ok: false, reason: d.meta.reason }
+      : { ok: false as const, reason: d.meta.reason }
     : null;
   const ads = d.ads
     ? d.ads.ok
       ? {
-          ok: true,
+          ok: true as const,
           currency: d.ads.currency,
           spend: sumBy(d.ads.days.slice(-n), (x) => x.cost),
           spendPrev: sumBy(d.ads.days.slice(-2 * n, -n), (x) => x.cost),
@@ -160,12 +160,12 @@ function compact(d: Dashboard) {
           campaigns: d.ads.campaigns.map((c) => ({ name: c.name, state: c.state ?? null, spend: round(c.cost), impressions: c.impressions, clicks: c.clicks, paidBy: c.paidBy ?? null })),
           notes: d.ads.notes,
         }
-      : { ok: false, reason: d.ads.reason }
+      : { ok: false as const, reason: d.ads.reason }
     : null;
   const ga = d.ga
     ? d.ga.ok
       ? {
-          ok: true,
+          ok: true as const,
           real: d.ga.real,
           realPrev: d.ga.realPrev,
           suspect: d.ga.split,
@@ -175,27 +175,27 @@ function compact(d: Dashboard) {
           blocked: d.ga.blocked,
           internal: d.ga.internal ? { sessions: d.ga.internal.sessions, users: d.ga.internal.users } : null,
         }
-      : { ok: false, reason: d.ga.reason }
+      : { ok: false as const, reason: d.ga.reason }
     : null;
   const yt = d.yt
     ? d.yt.ok
       ? {
-          ok: true,
+          ok: true as const,
           channel: d.yt.channelTitle,
           subscribers: d.yt.subscribers,
           totalViews: d.yt.totalViews,
           analytics: d.yt.analytics && d.yt.analytics.ok
             ? { cur: d.yt.analytics.cur, prev: d.yt.analytics.prev, top: top(d.yt.analytics.top, 5), lastDate: d.yt.analytics.lastDate, sources: top(d.yt.analytics.sources, 8), searchTerms: top(d.yt.analytics.searchTerms, 10) }
             : d.yt.analytics
-              ? { ok: false, reason: d.yt.analytics.reason }
+              ? { ok: false as const, reason: d.yt.analytics.reason }
               : null,
         }
-      : { ok: false, reason: d.yt.reason }
+      : { ok: false as const, reason: d.yt.reason }
     : null;
   const etsy = d.etsy
     ? d.etsy.ok
-      ? { ok: true, shop: d.etsy.shopName, currency: d.etsy.currency, cur: d.etsy.cur, prev: d.etsy.prev, countries: top(d.etsy.countries, 10), topItems: top(d.etsy.topItems, 5), favorers: d.etsy.favorers }
-      : { ok: false, reason: d.etsy.reason }
+      ? { ok: true as const, shop: d.etsy.shopName, currency: d.etsy.currency, cur: d.etsy.cur, prev: d.etsy.prev, countries: top(d.etsy.countries, 10), topItems: top(d.etsy.topItems, 5), favorers: d.etsy.favorers }
+      : { ok: false as const, reason: d.etsy.reason }
     : null;
   const vercel = d.vc && d.vc.ok && d.vc.analytics.ok
     ? { visitors: sumBy(d.vc.analytics.days, (x) => x.visitors), days: d.vc.analytics.days, countries: top(d.vc.analytics.countries, 10), referrers: top(d.vc.analytics.referrers, 10), lastDeploy: d.vc.deploys[0] ?? null }
@@ -211,7 +211,7 @@ function compact(d: Dashboard) {
     totalSpendPrev: d.overview.spendPrev,
     currency: d.overview.currency,
     signups: d.signups && d.signups.ok ? { count: d.signups.count, prev: d.signups.countPrev } : null,
-    orders: d.rev && d.rev.ok ? d.rev : d.rev ? { ok: false, reason: d.rev.reason } : null,
+    orders: d.rev && d.rev.ok ? d.rev : d.rev ? { ok: false as const, reason: d.rev.reason } : null,
     meta,
     googleAds: ads,
     ga4: ga,
@@ -231,8 +231,8 @@ export async function brandBrief(brand: BrandId, range: DateRange) {
     searchSummary(brand, range).catch(() => ({ ok: false as const, reason: "조회 실패", reconnect: false })),
   ]);
   const searchCompact = search.ok
-    ? { ok: true, site: search.site, cur: search.cur, prev: search.prev, lastDate: search.lastDate, queries: top(search.queries, 15), pages: top(search.pages, 10), brandShare: search.brandShare, organic: search.organic }
-    : { ok: false, reason: search.reason };
+    ? { ok: true as const, site: search.site, cur: search.cur, prev: search.prev, lastDate: search.lastDate, queries: top(search.queries, 15), pages: top(search.pages, 10), brandShare: search.brandShare, organic: search.organic }
+    : { ok: false as const, reason: search.reason };
   return { ...compact(d), metaAccount: metaX.ok ? metaX.account : null, metaCountries: metaX.ok ? metaX.countries : null, metaExtraError: metaX.ok ? null : metaX.reason, ga4Events: events, search: searchCompact };
 }
 

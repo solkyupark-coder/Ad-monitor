@@ -4,6 +4,8 @@ import { COOKIE, sessionToken } from "@/lib/auth";
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   if (pathname === "/login" || pathname === "/api/login") return NextResponse.next();
+  // 요약 JSON은 쿠키가 아니라 BRIEF_API_KEY로 라우트 안에서 확인한다(아침 보고·ad-monitor-mcp가 서버에서 읽음).
+  if (pathname === "/api/brief" || pathname === "/api/cron/brief") return NextResponse.next();
   const password = process.env.DASHBOARD_PASSWORD;
   if (password) {
     const cookie = req.cookies.get(COOKIE)?.value;

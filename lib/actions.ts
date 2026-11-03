@@ -183,7 +183,7 @@ export function buildActions(x: {
     if (c) out.push(c);
   }
 
-  if (x.pending.length) out.push({ level: "info", area: "연결", title: `연결 안 된 소스 ${x.pending.length}개: ${x.pending.join(", ")}`, action: "아래 '연결이 필요한 플랫폼'에 필요한 env 이름이 있다." });
+  if (x.pending.length) out.push({ level: "info", area: "연결", title: `연결 안 된 소스 ${x.pending.length}개: ${x.pending.join(", ")}`, action: "'연결' 탭에서 연결 방법을 볼 수 있어요." });
 
   const order: Record<ActionLevel, number> = { bad: 0, warn: 1, info: 2, good: 3 };
   out.sort((a, b) => order[a.level] - order[b.level]);

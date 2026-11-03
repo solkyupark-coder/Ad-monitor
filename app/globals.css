@@ -440,3 +440,11 @@ body:has(dialog[open]) { overflow: hidden; } /* 시트가 열려 있으면 뒤 �
   .acct-list li { flex-direction: column; gap: 4px; }
   .acct-list .acct-val { font-size: 13px; }
 }
+
+/* 폰 첫 화면: 위쪽 안내를 줄여 숫자가 더 빨리 보이게 */
+@media (max-width: 640px) {
+  .sub { display: none; }
+  header h1 { font-size: 18px; }
+  .tabs a { padding: 8px; min-height: 40px; }
+  .range > .fine { font-size: 12px; }
+}

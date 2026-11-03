@@ -29,27 +29,27 @@ export function OverviewPanel({ o, range, costPerEngaged, combo, brandLabel, sig
       </Stat>
     ) : o.primary === "signups" ? (
       <Stat key="signups" label="신규 가입" value="연결 안 됨">
-        <span className="delta flat">{signupFail ?? "가입 집계 함수 연결 필요 — README 참고"}</span>
+        <span className="delta flat">{signupFail ?? "가입 수를 아직 못 읽고 있어요"}</span>
       </Stat>
     ) : null;
   const costSignup = o.signups !== null ? (
     <Stat key="cps" label="가입 1명당" value={money(o.costPerSignup, "-")}>
-      <span className="delta flat">최소치 · 광고 외 가입 포함</span>
+      <span className="delta flat">광고 말고 온 가입도 포함</span>
     </Stat>
   ) : null;
   const costUser = (
     <Stat key="cpu" label="실사용자 1명당" value={money(o.costPerUser, "-")}>
-      <span className="delta flat">봇 제외 사용자</span>
+      <span className="delta flat">봇 빼고 센 사람 기준</span>
     </Stat>
   );
   const costEngaged = (
-    <Stat key="cpe" label="참여 1회당" value={money(costPerEngaged, "-")}>
-      <span className="delta flat">GA4 참여 세션 · 추적된 채널</span>
+    <Stat key="cpe" label="제대로 본 방문 1회당" value={money(costPerEngaged, "-")}>
+      <span className="delta flat">10초 넘게 머물렀거나 2페이지 이상 본 방문</span>
     </Stat>
   );
   const costOrder = (
     <Stat key="cpo" label="결제 1건당" value={o.costPerOrder !== null ? money(o.costPerOrder, "-") : ordersStep?.value === 0 ? "결제 0건" : "-"}>
-      <span className="delta flat">최소치 · 광고 외 결제 포함</span>
+      <span className="delta flat">광고 말고 온 결제도 포함</span>
     </Stat>
   );
   // 핵심 전환이 가입이면 가입을 앞에 두고(결제 카드는 뺀다), 결제가 핵심이면 기존 순서에 가입을 덧붙인다.
@@ -116,7 +116,7 @@ export function OverviewPanel({ o, range, costPerEngaged, combo, brandLabel, sig
 
       <div className="ov-body">
       <div className="fn-wrap">
-        <h3>광고에서 결제까지 <span className="fine-inline">막대 길이는 로그 눈금</span></h3>
+        <h3>광고에서 결제까지</h3>
         <ol className="fn" aria-label="광고 노출에서 실제 결제까지 퍼널">
           {o.steps.map((s, i) => {
             const w = widths[i];

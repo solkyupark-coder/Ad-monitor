@@ -39,6 +39,16 @@ function block(title: string, b: B, short = false): string[] {
   if (b.orders && b.orders.ok) L.push(`결제(${b.orders.source}): ${b.orders.orders}건 ${n(b.orders.amount, 2)} ${b.orders.currency}`);
   else if (b.orders && !b.orders.ok) L.push(`결제 못 읽음: ${b.orders.reason}`);
   if (b.etsy && b.etsy.ok) L.push(`엣시: 주문 ${b.etsy.cur.orders} · ${n(b.etsy.cur.amount, 2)} ${b.etsy.currency}`);
+  else if (b.etsy && !b.etsy.ok) L.push(`엣시 못 읽음: ${b.etsy.reason}`);
+  const rp = b.reddit?.posts;
+  if (rp && rp.ok) L.push(`레딧 글: ${rp.cur.posts}개 · 점수 ${n(rp.cur.score)}${vs(rp.cur.score, rp.prev?.score)} · 댓글 ${n(rp.cur.comments)}${!short && rp.top[0] ? ` · 최고 r/${rp.top[0].subreddit} "${cut(rp.top[0].title, 30)}" ▲${rp.top[0].score}` : ""}`);
+  else if (rp && !rp.ok) L.push(`레딧 글 못 읽음: ${rp.reason}`);
+  const ra = b.reddit?.ads;
+  if (ra && ra.ok) L.push(`레딧 광고: 지출 ${n(ra.spend, 2)} ${ra.currency} · 클릭 ${n(ra.clicks)} · 노출 ${n(ra.impressions)}`);
+  else if (ra && !ra.ok) L.push(`레딧 광고 못 읽음: ${ra.reason}`);
+  const tk = b.tiktok;
+  if (tk && tk.ok) L.push(`틱톡: 올린 영상 ${tk.cur.videos}개 · 누적 조회 ${n(tk.cur.views)}${vs(tk.cur.views, tk.prev?.views)} · 좋아요 ${n(tk.cur.likes)} · 팔로워 ${n(tk.followers)}${!short && tk.top[0] ? ` · 최고 "${cut(tk.top[0].title, 30)}" ${n(tk.top[0].views)}회` : ""}`);
+  else if (tk && !tk.ok) L.push(`틱톡 못 읽음: ${tk.reason}`);
   const y = b.youtube;
   if (short) return L;
   if (y && y.ok && y.analytics && "cur" in y.analytics && y.analytics.cur) L.push(`유튜브: 조회 ${n(y.analytics.cur.views)}${vs(y.analytics.cur.views, y.analytics.prev?.views)} · 시청 ${n(y.analytics.cur.minutes)}분 · 구독 ${y.analytics.cur.subsNet >= 0 ? "+" : ""}${y.analytics.cur.subsNet} (데이터 ${y.analytics.lastDate ?? "?"}까지)`);

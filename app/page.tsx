@@ -4,7 +4,7 @@ import type { YoutubeAnalytics, YoutubeSummary } from "@/lib/youtube";
 import { fmtCompact, fmtDate, fmtValue } from "@/lib/format";
 import { TrendChart } from "@/components/TrendChart";
 import { BarList, Delta, Stat } from "@/components/ui";
-import { AdsPanel, EtsyPanel, Ga4Panel, RevenuePanel, VercelPanel } from "@/components/panels";
+import { AdsPanel, EtsyPanel, Ga4Panel, RedditPanel, RevenuePanel, TiktokPanel, VercelPanel } from "@/components/panels";
 import { ActionsPanel, OverviewPanel } from "@/components/Overview";
 import { EffectPanel } from "@/components/EffectPanel";
 import { LevelIcon } from "@/components/icons";
@@ -391,7 +391,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Que
   const range = parseRange(sp);
   const [d, search] = await Promise.all([loadDashboard(brand, range), demoOn() ? demoSearch(range) : searchSummary(brand, range)]);
   const searchFix = search.ok && search.checks ? search.checks.filter((c) => c.state === "warn").length : 0;
-  const { meta, yt, ga, rev, ads, vc, etsy, overview, effect, actions, pending } = d;
+  const { meta, yt, ga, rev, ads, vc, etsy, reddit, tiktok, overview, effect, actions, pending } = d;
 
   const exportJson = exportData(d);
   const urgent = actions.filter((a) => a.level === "bad").length;
@@ -440,6 +440,19 @@ export default async function Home({ searchParams }: { searchParams: Promise<Que
       node: <SearchPanel s={search} y={yt} brand={brand} range={range} />,
     },
     {
+      id: "social",
+      label: "레딧·틱톡",
+      short: "소셜",
+      badge: (reddit?.posts && !reddit.posts.ok && reddit.posts.reconnect) || (tiktok && !tiktok.ok && tiktok.reconnect) ? { text: "연결 필요", short: "!", level: "info" } : null,
+      node: (
+        <>
+          {reddit && <RedditPanel r={reddit} brand={brand} range={range} />}
+          {tiktok && <TiktokPanel t={tiktok} brand={brand} range={range} />}
+          {!reddit && !tiktok && <p className="note panel">레딧·틱톡이 아직 연결되지 않았습니다. '연결' 탭을 확인하세요.</p>}
+        </>
+      ),
+    },
+    {
       id: "ads",
       label: "광고 상세",
       short: "광고",
@@ -453,15 +466,15 @@ export default async function Home({ searchParams }: { searchParams: Promise<Que
       ),
     },
   ];
-  if (pending.length > 0) {
+  {
     tabs.push({
       id: "connect",
       label: "연결",
       short: "연결",
-      badge: { text: String(pending.length), short: String(pending.length), level: "info" },
+      badge: pending.length ? { text: String(pending.length), short: String(pending.length), level: "info" } : null,
       node: (
         <>
-          <h3 className="pending-title">연결이 필요한 플랫폼</h3>
+          {pending.length > 0 && <h3 className="pending-title">연결이 필요한 플랫폼</h3>}
           <section className="grid">
             {pending.map(({ platform, missing }) => (
               <article key={platform.id} className="card">
@@ -476,12 +489,28 @@ export default async function Home({ searchParams }: { searchParams: Promise<Que
                     <span className="fine"> 구글 승인 후 refresh token을 한 번 보여 줍니다.</span>
                   </p>
                 )}
-                {platform.id === "reddit" && missing.length === 1 && missing[0].endsWith("_REDDIT_REFRESH_TOKEN") && (
+                {platform.id === "reddit" && missing.some((k) => k.endsWith("_REDDIT_REFRESH_TOKEN")) && (
                   <p>
-                    <a className="connect" href={`/api/reddit/connect?brand=${brand}`}>
-                      레딧 연결하기
+                    <a className="connect" href={`/api/reddit/connect?brand=${brand}&mode=ads`}>
+                      레딧 광고 연결하기
                     </a>
                     <span className="fine"> 레딧 승인 후 refresh token을 한 번 보여 줍니다.</span>
+                  </p>
+                )}
+                {platform.id === "reddit_posts" && missing.length === 1 && missing[0].endsWith("_REDDIT_USER_REFRESH_TOKEN") && (
+                  <p>
+                    <a className="connect" href={`/api/reddit/connect?brand=${brand}&mode=posts`}>
+                      레딧 글 연결하기
+                    </a>
+                    <span className="fine"> 브랜드 레딧 계정으로 로그인한 뒤 승인하세요. refresh token을 한 번 보여 줍니다.</span>
+                  </p>
+                )}
+                {platform.id === "tiktok" && missing.length === 1 && missing[0].endsWith("_TIKTOK_REFRESH_TOKEN") && (
+                  <p>
+                    <a className="connect" href={`/api/tiktok/connect?brand=${brand}`}>
+                      틱톡 연결하기
+                    </a>
+                    <span className="fine"> 브랜드 틱톡 계정으로 승인하세요. refresh token을 한 번 보여 줍니다.</span>
                   </p>
                 )}
                 {platform.id === "etsy" && missing.length === 1 && missing[0].endsWith("_ETSY_REFRESH_TOKEN") && (
@@ -502,6 +531,39 @@ export default async function Home({ searchParams }: { searchParams: Promise<Que
                 </ul>
               </article>
             ))}
+          </section>
+          <h3 className="pending-title">자동 게시용 토큰 (ad-monitor-mcp)</h3>
+          <section className="panel">
+            <p className="note">
+              아래 버튼은 글·영상·상품을 올릴 수 있는 토큰을 한 번 보여 줍니다. 이 대시보드가 아니라 Vercel의 <b>ad-monitor-mcp</b> 프로젝트 환경변수에 넣으세요. 각 플랫폼의
+              브랜드 계정으로 로그인한 상태에서 누르세요. 게시는 Claude가 게시물마다 사장님 확인을 받은 뒤에만 합니다.
+            </p>
+            <ul>
+              <li>
+                <a className="connect" href={`/api/reddit/connect?brand=${brand}&mode=post`}>
+                  레딧 글쓰기 토큰
+                </a>{" "}
+                <span className="fine">→ REDDIT_POST_TOKEN_{brand === "topogenesis" ? "TOPO" : "HOUSCAPER"}</span>
+              </li>
+              <li>
+                <a className="connect" href={`/api/etsy/connect?brand=${brand}&mode=publish`}>
+                  엣시 상품 등록 토큰
+                </a>{" "}
+                <span className="fine">→ ETSY_PUBLISH_TOKEN_{brand === "topogenesis" ? "TOPO" : "HOUSCAPER"}</span>
+              </li>
+              <li>
+                <a className="connect" href={`/api/tiktok/connect?brand=${brand}&mode=upload`}>
+                  틱톡 업로드 토큰
+                </a>{" "}
+                <span className="fine">→ TIKTOK_UPLOAD_TOKEN_{brand === "topogenesis" ? "TOPO" : "HOUSCAPER"}</span>
+              </li>
+              <li>
+                <a className="connect" href={`/api/youtube/connect?brand=${brand}&mode=upload`}>
+                  유튜브 업로드 토큰
+                </a>{" "}
+                <span className="fine">→ YT_UPLOAD_TOKEN_{brand === "topogenesis" ? "TOPO" : "HOUSCAPER"}</span>
+              </li>
+            </ul>
           </section>
         </>
       ),

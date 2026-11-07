@@ -1,0 +1,1 @@
+{ "name": "ad-monitor-mcp", "private": true, "type": "module", "engines": { "node": ">=20" }, "dependencies": { "@vercel/blob": "2.8.0" } }

@@ -1,6 +1,6 @@
 // D1: 플랫폼별 직접 연동(Windsor 미사용). 연결 상태는 환경변수 존재 여부로만 판단한다 — 값은 절대 화면/로그에 내지 않는다.
 export type BrandId = "houscaper" | "topogenesis";
-export type PlatformId = "meta" | "google_ads" | "youtube" | "ga4" | "revenue" | "purchase_db" | "vercel" | "reddit" | "tiktok" | "search_console" | "etsy";
+export type PlatformId = "meta" | "google_ads" | "youtube" | "ga4" | "revenue" | "purchase_db" | "vercel" | "reddit" | "reddit_posts" | "tiktok" | "search_console" | "etsy";
 
 export const BRANDS: { id: BrandId; label: string; prefix: string }[] = [
   { id: "houscaper", label: "하우스케이퍼", prefix: "HOUSCAPER" },
@@ -87,11 +87,18 @@ export const PLATFORMS: PlatformDef[] = [
     note: "브랜드 사이트의 프로덕션 배포 기록과 Web Analytics(방문자·페이지뷰·상위 페이지·유입·국가). 토큰은 팀 범위로 발급. Web Analytics가 꺼진 프로젝트면 배포 기록만 보인다.",
   },
   {
+    id: "reddit_posts",
+    label: "레딧 글",
+    shared: ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET"],
+    perBrand: ["REDDIT_USER_REFRESH_TOKEN"],
+    note: "브랜드 레딧 계정에 올린 글의 업보트·댓글·서브레딧별 반응과 카르마. refresh token은 '레딧 글 연결하기'로 발급(identity·history·read, 읽기 전용, 1회 표시). 브랜드 전용 레딧 앱({브랜드}_REDDIT_CLIENT_ID/SECRET)이 있으면 그 앱으로 연결한다.",
+  },
+  {
     id: "reddit",
-    label: "레딧",
+    label: "레딧 광고",
     shared: ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET"],
     perBrand: ["REDDIT_REFRESH_TOKEN", "REDDIT_AD_ACCOUNT_ID"],
-    note: "광고 API는 별도 접근 신청이 필요할 수 있음. refresh token은 카드의 '레딧 연결하기'로 발급(adsread, 1회 표시).",
+    note: "광고 API는 별도 접근 신청이 필요할 수 있음. refresh token은 카드의 '레딧 광고 연결하기'로 발급(adsread, 1회 표시). 광고 계정 ID는 Reddit Ads 화면 주소의 a2_… 값.",
   },
   {
     id: "etsy",
@@ -103,9 +110,9 @@ export const PLATFORMS: PlatformDef[] = [
   {
     id: "tiktok",
     label: "틱톡",
-    shared: ["TIKTOK_APP_ID", "TIKTOK_APP_SECRET"],
-    perBrand: ["TIKTOK_ACCESS_TOKEN", "TIKTOK_ADVERTISER_ID"],
-    note: "광고 조회는 Marketing API. 게시(Content Posting)는 앱 심사 전엔 비공개로만 올라감.",
+    shared: ["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET"],
+    perBrand: ["TIKTOK_REFRESH_TOKEN"],
+    note: "틱톡 개발자 앱(developers.tiktok.com)의 Client key·secret이 필요하고, 앱 Redirect URI에 {사이트}/api/tiktok/callback을 등록. refresh token은 '틱톡 연결하기'로 발급(계정·영상 지표 읽기, 1회 표시, 약 1년 유효). 틱톡은 영상별 누적 수치만 준다(날짜별 조회 없음).",
   },
 ];
 
@@ -158,6 +165,8 @@ export const OPTIONAL_ENV = [
   "{BRAND}_SEARCH_CONSOLE_SITE", // Search Console 속성을 직접 지정(예: sc-domain:houscaper.xyz). 없으면 도메인으로 찾는다
   "{BRAND}_SEARCH_BRAND_TERMS", // 브랜드 이름 검색으로 셀 말 추가(쉼표 구분)
   "ETSY_REDIRECT_URI", // 엣시 앱에 등록한 Callback URL. 기본은 {사이트}/api/etsy/callback
+  "TIKTOK_REDIRECT_URI", // 틱톡 앱에 등록한 Redirect URI. 기본은 {사이트}/api/tiktok/callback
+  "{BRAND}_REDDIT_CLIENT_ID", // 브랜드 전용 레딧 앱(있으면 공통 REDDIT_CLIENT_ID 대신 씀). {BRAND}_REDDIT_CLIENT_SECRET과 짝
   "YOUTUBE_REDIRECT_URI", // 구글 클라이언트에 등록한 redirect. 기본은 {사이트}/api/youtube/callback
   // 아래는 브랜드 접두사(HOUSCAPER_/TOPOGENESIS_)를 붙여 쓴다
   "{BRAND}_PURCHASE_TABLE", // 기본 purchase

@@ -27,17 +27,29 @@ export async function GET(req: NextRequest) {
   if (error) return page("엣시 연결이 취소됐습니다", `<p>엣시가 돌려준 사유: <code>${esc(error)}</code>${sp.get("error_description") ? ` — ${esc(sp.get("error_description")!)}` : ""}</p>`, 400);
   const code = sp.get("code");
   const state = sp.get("state");
-  const [savedState, brand, verifier] = (req.cookies.get(ETSY_STATE_COOKIE)?.value ?? "").split(".");
+  const [savedState, brand, verifier, mode] = (req.cookies.get(ETSY_STATE_COOKIE)?.value ?? "").split(".");
   if (!code || !state || !savedState || !verifier || state !== savedState || !isBrand(brand ?? null)) {
     return page("엣시 연결을 확인할 수 없습니다", "<p>연결 요청이 만료됐거나 다른 창에서 시작됐습니다(10분 제한). 대시보드의 '엣시 연결하기'를 다시 눌러 주세요.</p>", 400);
   }
   const r = await exchangeEtsyCode(code, verifier, etsyRedirectUri(req.nextUrl.origin));
   if (!r.ok) return page("엣시 토큰 교환 실패", `<p>${esc(r.error)}</p>`, 502);
-  const envName = `${BRANDS.find((b) => b.id === brand)!.prefix}_ETSY_REFRESH_TOKEN`;
   const shop = await shopName(r.accessToken);
+  const shopLine = shop ? `<p class="ok">연결된 샵: <b>${esc(shop)}</b></p>` : '<p class="warn">샵을 확인하지 못했습니다. 샵 주인 계정으로 승인했는지, ETSY_SHARED_SECRET이 들어 있는지 확인하세요.</p>';
+  if (mode === "publish") {
+    const envName = `ETSY_PUBLISH_TOKEN_${brand === "topogenesis" ? "TOPO" : "HOUSCAPER"}`;
+    return page(
+      "엣시 상품 등록 토큰 발급 완료",
+      `${shopLine}
+<p class="warn">이 값은 <b>ad-monitor-mcp</b> 프로젝트(대시보드 아님)에 넣으세요. 상품을 만들고 고칠 수 있는 토큰입니다.</p>
+${tokenBox(envName, r.refreshToken).replace("Vercel 환경변수", "Vercel <b>ad-monitor-mcp</b> 프로젝트 환경변수")}
+<p class="fine">ad-monitor-mcp에 ETSY_KEYSTRING / ETSY_SHARED_SECRET도 같은 앱 값으로 넣어야 합니다. 약 90일 뒤에는 다시 발급하세요.</p>
+<p class="warn">채팅이나 문서에 붙여넣지 마세요. 넣은 뒤 이 창을 닫으세요.</p>`,
+    );
+  }
+  const envName = `${BRANDS.find((b) => b.id === brand)!.prefix}_ETSY_REFRESH_TOKEN`;
   return page(
     "엣시 refresh token 발급 완료",
-    `${shop ? `<p class="ok">연결된 샵: <b>${esc(shop)}</b></p>` : '<p class="warn">샵을 확인하지 못했습니다. 샵 주인 계정으로 승인했는지, ETSY_SHARED_SECRET이 들어 있는지 확인하세요.</p>'}
+    `${shopLine}
 ${tokenBox(envName, r.refreshToken)}
 <p class="fine">엣시 refresh token은 발급 후 약 90일 쓸 수 있습니다. 그 뒤에는 대시보드에서 다시 연결하세요.</p>
 <p class="warn">채팅이나 문서에 붙여넣지 마세요. 넣은 뒤 이 창을 닫으세요.</p>`,

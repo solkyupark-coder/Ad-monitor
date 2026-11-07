@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
     period: `어제 ${day.to} · ${weekLabel} (공식 API 직접 수집)`,
     topo: briefText(topoDay, topoWeek, weekLabel),
     houscaper: briefText(hcDay, hcWeek, weekLabel),
-    note: "ad-monitor가 메타·구글 광고·GA4·Search Console·유튜브·엣시 공식 API에서 직접 받은 값(Windsor 미사용). '못 읽음' 줄은 그 소스가 실패한 것이지 0이 아닙니다. GA4·유튜브·검색은 1~3일 늦게 채워질 수 있습니다.",
+    note: "ad-monitor가 메타·구글 광고·GA4·Search Console·유튜브·엣시·레딧·틱톡 공식 API에서 직접 받은 값(Windsor 미사용). '못 읽음' 줄은 그 소스가 실패한 것이지 0이 아닙니다. GA4·유튜브·검색은 1~3일 늦게 채워질 수 있습니다.",
     source: "ad-monitor /api/cron/brief",
     generatedAt: new Date().toISOString(),
   };

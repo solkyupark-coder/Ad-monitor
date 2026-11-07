@@ -7,6 +7,8 @@ import { googleAdsSummary, type GoogleAdsSummary } from "@/lib/googleads";
 import { revenueDays, revenueSummary, type RevenueSummary } from "@/lib/revenue";
 import { vercelSummary, type VercelSummary } from "@/lib/vercel";
 import { etsySummary, type EtsySummary } from "@/lib/etsy";
+import { redditSummary, type RedditSummary } from "@/lib/reddit";
+import { tiktokSummary, type TiktokSummary } from "@/lib/tiktok";
 import { demoAds, demoGa4, demoMeta, demoOn, demoRevenue, demoRevenueDays, demoRevenueHours, demoSignups, demoVercel, demoYoutube } from "@/lib/demo";
 import { buildOverview, type Overview } from "@/lib/overview";
 import { buildEffect, channelOf, type EffectReport } from "@/lib/effect";
@@ -33,6 +35,8 @@ export type Dashboard = {
   ads: GoogleAdsSummary | null;
   vc: VercelSummary | null;
   etsy: EtsySummary | null; // 엣시 샵 주문·판매액. 내보내기에서는 읽지 않는다
+  reddit: RedditSummary | null; // 레딧 글 반응 + 레딧 광고. 내보내기에서는 읽지 않는다
+  tiktok: TiktokSummary | null; // 틱톡 계정·영상 지표. 내보내기에서는 읽지 않는다
   signups: SignupSummary | null; // 신규 가입(Supabase RPC 일별 개수). 연결 안 됐으면 null. 내보내기에서는 읽지 않는다
   primary: "signups" | "orders"; // 이 브랜드의 핵심 전환(토포제네시스는 가입)
   combo: ComboData | null; // 겹쳐 그리는 일별 그래프(한눈에 보기). 내보내기에서는 만들지 않는다
@@ -56,14 +60,14 @@ export function primaryKpi(brand: BrandId, env: Record<string, string | undefine
 const DEMO_ON: PlatformId[] = ["meta", "youtube", "ga4", "revenue", "purchase_db", "vercel", "google_ads", "search_console"];
 
 // skip: 내보내기처럼 일부 소스만 필요할 때 불필요한 외부 호출을 건너뛴다.
-export async function loadDashboard(brand: BrandId, range: DateRange, skip: { youtube?: boolean; vercel?: boolean; combo?: boolean; etsy?: boolean } = {}): Promise<Dashboard> {
+export async function loadDashboard(brand: BrandId, range: DateRange, skip: { youtube?: boolean; vercel?: boolean; combo?: boolean; etsy?: boolean; social?: boolean } = {}): Promise<Dashboard> {
   const demo = demoOn();
   const statuses = statusFor(brand);
   const isOn = (id: PlatformId) => (demo ? DEMO_ON.includes(id) : statuses.find((s) => s.platform.id === id)?.connected);
   // 다른 브랜드 광고 계정에서 결제됐지만 이 브랜드 광고인 캠페인(lib/attribution.ts 규칙)을 받아 오려고 다른 브랜드의 광고도 함께 읽는다(10분 캐시).
   const others = BRANDS.filter((b) => b.id !== brand).map((b) => ({ id: b.id, st: statusFor(b.id) }));
   const otherOn = (st: PlatformStatus[], id: PlatformId) => !demo && !!st.find((s) => s.platform.id === id)?.connected;
-  const [metaRaw, yt, ga, rev, adsRaw, vc, otherMeta, otherAds, revDays, signups, etsy] = await Promise.all([
+  const [metaRaw, yt, ga, rev, adsRaw, vc, otherMeta, otherAds, revDays, signups, etsy, reddit, tiktok] = await Promise.all([
     isOn("meta") ? (demo ? demoMeta(range) : metaSummary(brand, range)) : null,
     isOn("youtube") && !skip.youtube ? (demo ? demoYoutube(range) : youtubeSummary(brand, range)) : null,
     isOn("ga4") ? (demo ? demoGa4(range) : ga4Summary(brand, range)) : null,
@@ -75,6 +79,8 @@ export async function loadDashboard(brand: BrandId, range: DateRange, skip: { yo
     isOn("revenue") && !skip.combo ? (demo ? demoRevenueDays(range) : revenueDays(brand, range)) : null,
     !skip.combo && (demo || signupsConfigured(brand)) ? (demo ? demoSignups(range) : signupSummary(brand, range)) : null,
     isOn("etsy") && !skip.etsy ? etsySummary(brand, range) : null,
+    !demo && !skip.social ? redditSummary(brand, range, { posts: !!isOn("reddit_posts"), ads: !!isOn("reddit") }) : null,
+    isOn("tiktok") && !skip.social ? tiktokSummary(brand, range) : null,
   ]);
   const primary = primaryKpi(brand);
   const meta = demo ? metaRaw : mergeMetaMoved(brand, metaRaw, otherMeta, range);
@@ -158,7 +164,7 @@ export async function loadDashboard(brand: BrandId, range: DateRange, skip: { yo
     statuses,
     pending,
     connectedCount: statuses.length - pending.length,
-    meta, yt, ga, rev, ads, vc, etsy, signups, primary,
+    meta, yt, ga, rev, ads, vc, etsy, reddit, tiktok, signups, primary,
     combo, overview, effect, actions,
   };
 }

@@ -197,6 +197,21 @@ function compact(d: Dashboard) {
       ? { ok: true as const, shop: d.etsy.shopName, currency: d.etsy.currency, cur: d.etsy.cur, prev: d.etsy.prev, countries: top(d.etsy.countries, 10), topItems: top(d.etsy.topItems, 5), favorers: d.etsy.favorers }
       : { ok: false as const, reason: d.etsy.reason }
     : null;
+  const reddit = d.reddit
+    ? {
+        posts: d.reddit.posts
+          ? d.reddit.posts.ok
+            ? { ok: true as const, user: d.reddit.posts.user, karma: d.reddit.posts.karma, cur: d.reddit.posts.cur, prev: d.reddit.posts.prev, top: top(d.reddit.posts.posts, 5).map((p) => ({ title: p.title, subreddit: p.subreddit, date: p.date, score: p.score, comments: p.comments })), subreddits: top(d.reddit.posts.subreddits, 6) }
+            : { ok: false as const, reason: d.reddit.posts.reason }
+          : null,
+        ads: d.reddit.ads ? (d.reddit.ads.ok ? { ok: true as const, currency: d.reddit.ads.currency, spend: round(d.reddit.ads.spend), impressions: d.reddit.ads.impressions, clicks: d.reddit.ads.clicks } : { ok: false as const, reason: d.reddit.ads.reason }) : null,
+      }
+    : null;
+  const tiktok = d.tiktok
+    ? d.tiktok.ok
+      ? { ok: true as const, name: d.tiktok.name, followers: d.tiktok.followers, cur: d.tiktok.cur, prev: d.tiktok.prev, top: top(d.tiktok.videos, 5).map((v) => ({ title: v.title, date: v.date, views: v.views, likes: v.likes, comments: v.comments, shares: v.shares })) }
+      : { ok: false as const, reason: d.tiktok.reason }
+    : null;
   const vercel = d.vc && d.vc.ok && d.vc.analytics.ok
     ? { visitors: sumBy(d.vc.analytics.days, (x) => x.visitors), days: d.vc.analytics.days, countries: top(d.vc.analytics.countries, 10), referrers: top(d.vc.analytics.referrers, 10), lastDeploy: d.vc.deploys[0] ?? null }
     : null;
@@ -217,6 +232,8 @@ function compact(d: Dashboard) {
     ga4: ga,
     youtube: yt,
     etsy,
+    reddit,
+    tiktok,
     vercel,
     effect: { best: d.effect.best, worst: d.effect.worst, campaigns: d.effect.campaigns, notes: d.effect.notes },
     alerts: d.actions,
@@ -250,7 +267,7 @@ export async function buildBrief(opts: { brands?: BrandId[]; range?: { range?: s
   );
   return {
     generatedAt: new Date().toISOString(),
-    source: "ad-monitor 직접 연동(메타 Graph·구글 광고·GA4 Data·Search Console·YouTube Analytics·Etsy·Vercel). Windsor 미사용.",
+    source: "ad-monitor 직접 연동(메타 Graph·구글 광고·GA4 Data·Search Console·YouTube Analytics·Etsy·Reddit·TikTok·Vercel). Windsor 미사용.",
     ranges: { yesterday: { from: yesterday.from, to: yesterday.to }, period: { from: week.from, to: week.to, days: week.days } },
     brands: out,
   };

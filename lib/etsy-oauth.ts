@@ -1,7 +1,10 @@
 // 엣시 Open API v3 OAuth(PKCE): 승인 주소 만들기, code → refresh token 교환, 토큰 갱신.
 // 앱 키는 ETSY_KEYSTRING + ETSY_SHARED_SECRET(2026-02부터 x-api-key는 "keystring:secret" 형식만 받는다). 토큰 값은 로그에 남기지 않는다.
 export const ETSY_STATE_COOKIE = "adm_etsy_oauth";
-export const ETSY_SCOPES = ["shops_r", "transactions_r", "listings_r", "profile_r"]; // 읽기 전용
+export const ETSY_SCOPES = ["shops_r", "transactions_r", "listings_r", "profile_r"]; // 읽기 전용(대시보드)
+// 상품 등록용(ad-monitor-mcp의 엣시 리스팅 도구): 대시보드 토큰과 따로 발급한다. 대시보드는 계속 읽기 전용.
+export const ETSY_PUBLISH_SCOPES = ["shops_r", "listings_r", "listings_w", "profile_r"];
+export type EtsyMode = "read" | "publish";
 const TOKEN_URL = "https://api.etsy.com/v3/public/oauth/token";
 
 // 엣시 앱의 Callback URL에 정확히 등록돼 있어야 한다. 기본은 {사이트}/api/etsy/callback.
@@ -27,12 +30,12 @@ export async function challengeOf(verifier: string): Promise<string> {
   return b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
 }
 
-export function etsyAuthorizeUrl(state: string, challenge: string, redirectUri: string): string {
+export function etsyAuthorizeUrl(state: string, challenge: string, redirectUri: string, mode: EtsyMode = "read"): string {
   const q = new URLSearchParams({
     response_type: "code",
     client_id: process.env.ETSY_KEYSTRING ?? "",
     redirect_uri: redirectUri,
-    scope: ETSY_SCOPES.join(" "),
+    scope: (mode === "publish" ? ETSY_PUBLISH_SCOPES : ETSY_SCOPES).join(" "),
     state,
     code_challenge: challenge,
     code_challenge_method: "S256",

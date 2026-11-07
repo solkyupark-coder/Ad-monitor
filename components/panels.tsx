@@ -4,6 +4,8 @@ import type { RevenueSummary } from "@/lib/revenue";
 import type { DateRange } from "@/lib/range";
 import type { VercelSummary, VercelTop } from "@/lib/vercel";
 import type { EtsySummary } from "@/lib/etsy";
+import type { RedditSummary } from "@/lib/reddit";
+import type { TiktokSummary } from "@/lib/tiktok";
 import type { BrandId } from "@/lib/platforms";
 import { adsEngagement, byCountry, compareRevenue, compareVisitors, findGoogleCpc, LOW_ENGAGEMENT_SEC } from "@/lib/traffic";
 import { fmtCompact, fmtValue } from "@/lib/format";
@@ -622,6 +624,191 @@ export function EtsyPanel({ e, brand, range }: { e: EtsySummary; brand: BrandId;
           />
         </>
       )}
+    </section>
+  );
+}
+
+// 레딧: 브랜드 계정 글 반응(업보트·댓글)과 레딧 광고 성과. 레딧 API는 글 조회수를 거의 주지 않는다.
+export function RedditPanel({ r, brand, range }: { r: RedditSummary; brand: BrandId; range: DateRange }) {
+  const p = r.posts;
+  const a = r.ads;
+  const prev = range.today ? null : p && p.ok ? p.prev : null;
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <h2>레딧</h2>
+        <p className="meta">
+          {p && p.ok ? (
+            <a href={`https://www.reddit.com/user/${encodeURIComponent(p.user)}/submitted/`} target="_blank" rel="noreferrer">
+              u/{p.user}
+            </a>
+          ) : (
+            "레딧"
+          )}{" "}
+          · {range.label}
+        </p>
+      </div>
+      {p && !p.ok && (
+        <p className="note">
+          글 반응: {p.reason}
+          {p.reconnect && (
+            <>
+              {" "}
+              <a className="connect" href={`/api/reddit/connect?brand=${brand}&mode=posts`}>
+                레딧 글 다시 연결
+              </a>
+            </>
+          )}
+        </p>
+      )}
+      {p && p.ok && (
+        <>
+          <div className="kpis">
+            <Stat label="올린 글" value={p.cur.posts} kind="count" hero>
+              <Delta cur={p.cur.posts} prev={prev?.posts ?? null} goodWhen="up" />
+            </Stat>
+            <Stat label="업보트 점수 합" value={n(p.cur.score)}>
+              <Delta cur={p.cur.score} prev={prev?.score ?? null} goodWhen="up" />
+            </Stat>
+            <Stat label="댓글 합" value={n(p.cur.comments)}>
+              <Delta cur={p.cur.comments} prev={prev?.comments ?? null} goodWhen="up" />
+            </Stat>
+            <Stat label="계정 카르마 (누적)" value={p.karma == null ? "–" : n(p.karma)} />
+          </div>
+          <p className="fine">기간에 올린 글의 지금까지 점수·댓글입니다(레딧은 글별 조회수를 주지 않습니다). 최근 글 100개 안에서 셉니다.</p>
+          {p.posts.length > 0 ? (
+            <>
+              <h3>이 기간 반응 좋은 글</h3>
+              <BarList
+                color="s1"
+                items={p.posts.map((x, i) => ({
+                  id: `rp${i}`,
+                  label: `r/${x.subreddit} · ${x.title}`,
+                  value: Math.max(0, x.score),
+                  display: `▲${n(x.score)} · 💬${n(x.comments)}`,
+                  note: `${x.date} r/${x.subreddit}${x.removed ? " (삭제됨)" : ""} · 점수 ${n(x.score)} · 댓글 ${n(x.comments)}${x.upvoteRatio != null ? ` · 추천 비율 ${Math.round(x.upvoteRatio * 100)}%` : ""}`,
+                }))}
+              />
+            </>
+          ) : (
+            <p className="note">
+              이 기간에 올린 글이 없습니다.
+              {p.recent[0] ? ` 마지막 글: ${p.recent[0].date} r/${p.recent[0].subreddit} (▲${n(p.recent[0].score)})` : ""}
+            </p>
+          )}
+          {p.subreddits.length > 1 && (
+            <>
+              <h3>서브레딧별 반응</h3>
+              <BarList color="s2" items={p.subreddits.slice(0, 8).map((s) => ({ id: s.name, label: `r/${s.name}`, value: Math.max(0, s.score), display: `▲${n(s.score)} · ${n(s.posts)}개`, note: `r/${s.name} 글 ${n(s.posts)}개, 점수 ${n(s.score)}` }))} />
+            </>
+          )}
+        </>
+      )}
+      {a && !a.ok && (
+        <p className="note">
+          레딧 광고: {a.reason}
+          {a.reconnect && (
+            <>
+              {" "}
+              <a className="connect" href={`/api/reddit/connect?brand=${brand}&mode=ads`}>
+                레딧 광고 다시 연결
+              </a>
+            </>
+          )}
+        </p>
+      )}
+      {a && a.ok && (
+        <>
+          <h3>레딧 광고</h3>
+          <div className="kpis">
+            <Stat label="광고비" value={fmtValue(a.spend, "won", a.currency)} />
+            <Stat label="노출" value={n(a.impressions)} />
+            <Stat label="클릭" value={n(a.clicks)} />
+            <Stat label="클릭당 비용" value={a.clicks ? fmtValue(a.spend / a.clicks, "won", a.currency) : "–"} />
+          </div>
+          {range.days > 1 && a.days.length > 1 && <TrendChart points={a.days.map((d) => ({ date: d.date, value: d.clicks }))} kind="count" color="s1" name="클릭" />}
+        </>
+      )}
+    </section>
+  );
+}
+
+// 틱톡: 계정 현황과 기간에 올린 영상의 누적 조회·좋아요·댓글·공유. 틱톡은 날짜별 조회 기록을 주지 않는다.
+export function TiktokPanel({ t, brand, range }: { t: TiktokSummary; brand: BrandId; range: DateRange }) {
+  if (!t.ok) {
+    return (
+      <section className="panel">
+        <h2>틱톡</h2>
+        <p className="note">{t.reason}</p>
+        {t.reconnect && (
+          <p>
+            <a className="connect" href={`/api/tiktok/connect?brand=${brand}`}>
+              틱톡 다시 연결
+            </a>
+            <span className="fine"> 틱톡 승인 후 새 refresh token을 한 번 보여 줍니다.</span>
+          </p>
+        )}
+      </section>
+    );
+  }
+  const prev = range.today ? null : t.prev;
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <h2>틱톡</h2>
+        <p className="meta">
+          {t.username ? (
+            <a href={`https://www.tiktok.com/@${encodeURIComponent(t.username)}`} target="_blank" rel="noreferrer">
+              {t.name || `@${t.username}`}
+            </a>
+          ) : (
+            t.name
+          )}{" "}
+          · {range.label}
+        </p>
+      </div>
+      <div className="kpis">
+        <Stat label="올린 영상의 조회" value={n(t.cur.views)} hero>
+          <Delta cur={t.cur.views} prev={prev?.views ?? null} goodWhen="up" />
+        </Stat>
+        <Stat label="올린 영상" value={t.cur.videos} kind="count">
+          <Delta cur={t.cur.videos} prev={prev?.videos ?? null} goodWhen="up" />
+        </Stat>
+        <Stat label="좋아요·댓글·공유" value={`${n(t.cur.likes)} · ${n(t.cur.comments)} · ${n(t.cur.shares)}`} />
+        <Stat label="팔로워 (현재)" value={t.followers == null ? "–" : n(t.followers)} />
+      </div>
+      <p className="fine">
+        기간에 올린 영상의 지금까지 누적 수치입니다(틱톡은 날짜별 조회를 주지 않습니다).
+        {t.likesTotal != null ? ` 계정 누적 좋아요 ${n(t.likesTotal)}` : ""}
+        {t.videoCount != null ? ` · 전체 영상 ${n(t.videoCount)}개` : ""}.
+      </p>
+      {t.videos.length > 0 ? (
+        <>
+          <h3>이 기간 올린 영상 (조회 많은 순)</h3>
+          <BarList
+            color="s1"
+            items={t.videos.map((v) => ({
+              id: v.id,
+              label: v.title,
+              value: v.views,
+              display: n(v.views),
+              note: `${v.date} · 조회 ${n(v.views)} · 좋아요 ${n(v.likes)} · 댓글 ${n(v.comments)} · 공유 ${n(v.shares)}`,
+            }))}
+          />
+        </>
+      ) : (
+        <p className="note">
+          이 기간에 올린 영상이 없습니다.
+          {t.recent[0] ? ` 마지막 영상: ${t.recent[0].date} (조회 ${n(t.recent[0].views)})` : ""}
+        </p>
+      )}
+      {t.recent.length > 0 && (
+        <>
+          <h3>최근 영상</h3>
+          <BarList color="s2" items={t.recent.map((v) => ({ id: `r${v.id}`, label: `${v.date} ${v.title}`, value: v.views, display: n(v.views), note: `조회 ${n(v.views)} · 좋아요 ${n(v.likes)} · 댓글 ${n(v.comments)} · 공유 ${n(v.shares)}` }))} />
+        </>
+      )}
+      {t.truncated && <p className="fine">영상이 많아 최근 100개만 봤습니다.</p>}
     </section>
   );
 }

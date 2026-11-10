@@ -2,8 +2,8 @@
 
 요청: ad-monitor 메시지함 11/6 20:50Z "Ad reel request". 레이저 커터를 가진 메이커 대상, 영어, 9:16, 15~25초, 사이트 실제 화면 녹화만 사용.
 
-- `reel-laser-en.mp4`: 22초, 가격 없음 (기본).
-- `reel-laser-en-price.mp4`: 24.8초, 결제 화면($3 / $9)과 끝 화면 가격 줄 포함.
+- `reel-laser-en.mp4`: 25초, 가격 없음 (사용자 선택 11/10). 11/10 17:30 KST 사용자 요청으로 끝 화면 앞에 앱 MDF 뷰의 완성된 집 장면 추가(See it in plain MDF → Cut it. Glue it. Done.).
+- `reel-laser-en-price.mp4`: 24.8초(MDF 장면 추가 전 버전), 결제 화면($3 / $9)과 끝 화면 가격 줄 포함.
 - 1080×1920, 30fps. 음악은 직접 만든 곡(src/maker_music.py, 로파이 그루브 D장조 104bpm), -14 LUFS.
 - 흐름: 완성된 모던 빌라 회전("Got a laser cutter? Cut this house.") → 스타일 고르기 → 블록 5번 탭해서 쌓기 → 도면 → 기계별 시트 크기(Glowforge 495×279, xTool M1 385×300, xTool S1 498×319) → 무료 스타일 도면 받기와 이메일 받기 카드 → (가격 버전만) 결제 화면 → 끝 화면 houscaper.xyz.
 - 화면은 전부 houscaper-app main(8ed0b9a)을 로컬에서 띄워 휴대폰 크기(432×768)로 찍은 실제 화면. src/cap*.mjs가 녹화 스크립트, src/rec/가 원본 프레임, src/reel12.html이 편집본(?l=en 가격 없음, ?l=enp 가격 있음).
@@ -19,3 +19,6 @@ Got a laser cutter? Design a miniature house in your browser. Pick a style, stac
 #lasercut #glowforge #xtool #lasercutfiles #miniaturehouse
 
 Shorts 제목: Design a laser-cut miniature house in your browser #shorts
+
+## AI 실물 사진
+ElevenLabs 플로우 "Laser-cut house finished photo"에 MDF 뷰를 바탕으로 한 실물 사진 느낌 이미지 2장을 생성함(16:9). 이 컨테이너에서는 그 파일 주소가 막혀 내려받지 못해 릴스에는 MDF 뷰를 씀.

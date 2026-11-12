@@ -10,11 +10,12 @@ import { postReel, publishReel, uploadVideoFromUrl, uploadYoutube } from "../lib
 import { redditCheckSubreddit, redditMyPosts, redditSubmitPost } from "../lib/reddit.js";
 import { etsyCreateDraftListing, etsyFindCategory, etsyPublishListing, etsyShopInfo } from "../lib/etsy.js";
 import { tiktokPostStatus, tiktokUploadVideo } from "../lib/tiktok.js";
+import { ga4Report } from "../lib/ga4.js";
 import { UserError } from "../lib/util.js";
 
-const VERSION = "2.0.0";
+const VERSION = "2.1.0";
 const INSTRUCTIONS =
-  "ad-monitor·토포제네시스·하우스케이퍼 프로젝트가 함께 쓰는 서버입니다. 일일 상황과 세부 수치는 매일 08:52 KST에 갱신됩니다. 프로젝트끼리 post_message/read_messages로 메시지를 주고받고, upload_video_from_url로 영상을 올려 주소를 받고, post_reel/publish_reel로 브랜드 인스타그램에 릴스를, upload_youtube_video로 유튜브에, reddit_submit_post로 레딧에, etsy_create_draft_listing으로 엣시 상품 초안을, tiktok_upload_video로 틱톡에 올립니다. 공개 게시는 게시물마다 사용자 확인 후에만 합니다(레딧·엣시 공개·틱톡 바로 게시는 confirm=true가 있어야 실제로 실행).";
+  "ad-monitor·토포제네시스·하우스케이퍼 프로젝트가 함께 쓰는 서버입니다. 일일 상황과 세부 수치는 매일 08:52 KST에 갱신됩니다. 프로젝트끼리 post_message/read_messages로 메시지를 주고받고, upload_video_from_url로 영상을 올려 주소를 받고, post_reel/publish_reel로 브랜드 인스타그램에 릴스를, upload_youtube_video로 유튜브에, reddit_submit_post로 레딧에, etsy_create_draft_listing으로 엣시 상품 초안을, tiktok_upload_video로 틱톡에 올립니다. ga4_report로 두 브랜드 GA4를 원하는 차원·지표·기간으로 직접 조회합니다(get_metrics 요약에 없는 페이지·이벤트·유입·국가·기기 등). 공개 게시는 게시물마다 사용자 확인 후에만 합니다(레딧·엣시 공개·틱톡 바로 게시는 confirm=true가 있어야 실제로 실행).";
 
 const brandAll = { type: "string", enum: ["topo", "houscaper", "all"], description: "topo=토포제네시스, houscaper=하우스케이퍼, all=전체 (기본값)" };
 const brand2 = (d = "브랜드") => ({ type: "string", enum: ["topo", "houscaper"], description: d });
@@ -31,6 +32,37 @@ const TOOLS = [
     inputSchema: { type: "object", required: ["for"], properties: { for: { type: "string", enum: ["ad-monitor", "topo", "houscaper"], description: "읽는 프로젝트" }, limit: { type: "integer", minimum: 1, maximum: 50, description: "최대 개수 (기본 20)" }, since: { type: "string", description: "이 시각(ISO 8601) 이후 메시지만. 생략하면 최근 것" } } },
     annotations: RO,
     run: readMessages,
+  },
+  {
+    name: "ga4_report",
+    description:
+      "브랜드 GA4를 원하는 차원·지표·기간으로 직접 조회합니다(읽기 전용). 인사이트를 뽑을 때 get_metrics 요약에 없는 것 — 페이지별(pagePath), 이벤트별(eventName), 유입(sessionSource, sessionMedium, sessionCampaignName, firstUserSource), 국가·도시, 기기(deviceCategory), 랜딩 페이지(landingPage), 일별(date), 신규/재방문(newVsReturning) 등 — 을 바로 봅니다. 기본은 대시보드와 같은 '실사용자' 기준(봇·클릭팜·운영자 본인·데이터센터 도시 제외); include_all=true면 원자료. kind='metadata'는 쓸 수 있는 차원·지표 목록(맞춤 이벤트 파라미터 포함), kind='realtime'은 최근 30분.",
+    inputSchema: {
+      type: "object",
+      required: ["brand"],
+      properties: {
+        brand: brand2("조회할 브랜드"),
+        kind: { type: "string", enum: ["report", "realtime", "metadata"], description: "기본 report" },
+        dimensions: { type: "array", items: { type: "string" }, maxItems: 9, description: "GA4 차원 API 이름(예: pagePath, eventName, sessionSourceMedium, country, deviceCategory, date)" },
+        metrics: { type: "array", items: { type: "string" }, maxItems: 10, description: "GA4 지표 API 이름(예: activeUsers, sessions, engagedSessions, engagementRate, eventCount, screenPageViews, keyEvents, ecommercePurchases, purchaseRevenue, userEngagementDuration)" },
+        start_date: { type: "string", description: "YYYY-MM-DD 또는 today·yesterday·NdaysAgo (기본 7daysAgo)" },
+        end_date: { type: "string", description: "기본 yesterday" },
+        compare_start_date: { type: "string", description: "비교 기간 시작(선택). 주면 결과에 dateRange 열이 붙음" },
+        compare_end_date: { type: "string" },
+        filters: {
+          type: "array",
+          description: "간단 필터(모두 AND). 예: [{field:'eventName', value:'generate_complete'}], [{field:'country', value:'South Korea', not:true}]",
+          items: { type: "object", required: ["field", "value"], properties: { field: { type: "string" }, value: { type: "string" }, match: { type: "string", enum: ["exact", "contains", "begins", "regex", "in"], description: "기본 exact. in은 쉼표로 여러 값" }, not: { type: "boolean" } } },
+        },
+        dimension_filter: { type: "object", description: "GA4 FilterExpression 원형(고급). filters와 함께 쓰면 AND" },
+        metric_filter: { type: "object", description: "GA4 FilterExpression(지표 조건, 고급)" },
+        order_by: { type: "array", items: { type: "object", required: ["field"], properties: { field: { type: "string" }, desc: { type: "boolean" } } }, description: "기본: 첫 지표 내림차순" },
+        limit: { type: "integer", minimum: 1, maximum: 1000, description: "기본 100" },
+        include_all: { type: "boolean", description: "true면 봇·본인 등을 빼지 않은 원자료" },
+      },
+    },
+    annotations: RO,
+    run: ga4Report,
   },
   {
     name: "post_message",

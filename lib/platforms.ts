@@ -168,6 +168,7 @@ export const OPTIONAL_ENV = [
   "TIKTOK_REDIRECT_URI", // 틱톡 앱에 등록한 Redirect URI. 기본은 {사이트}/api/tiktok/callback
   "{BRAND}_REDDIT_CLIENT_ID", // 브랜드 전용 레딧 앱(있으면 공통 REDDIT_CLIENT_ID 대신 씀). {BRAND}_REDDIT_CLIENT_SECRET과 짝
   "YOUTUBE_REDIRECT_URI", // 구글 클라이언트에 등록한 redirect. 기본은 {사이트}/api/youtube/callback
+  "GA4_QUERY_KEY", // /api/ga4/query(분석용 GA4 자유 조회) 열쇠. ad-monitor-mcp의 같은 이름 값과 같아야 한다. 없으면 그 주소는 닫혀 있다
   // 아래는 브랜드 접두사(HOUSCAPER_/TOPOGENESIS_)를 붙여 쓴다
   "{BRAND}_PURCHASE_TABLE", // 기본 purchase
   "{BRAND}_PURCHASE_DATE_COLUMN", // 기본 created_at

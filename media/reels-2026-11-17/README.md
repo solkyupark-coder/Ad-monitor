@@ -20,3 +20,7 @@ TW: 每種房子都有專屬音樂 🔊 韓屋配國樂、日本城配日本箏�
 
 ## Shorts 제목
 KO 집마다 음악이 바뀌는 미니어처 집 짓기 #shorts / EN Every house has its own music #shorts / JA 家ごとに音楽が変わるミニチュアハウス #shorts / TW 每種房子都有專屬音樂 #shorts
+
+## 게시 (11/17 ~14:40 KST, 사용자 "올려", 광고 없음)
+IG: KO https://www.instagram.com/reel/Df1MqQikRF9/ · EN https://www.instagram.com/reel/Df1MqTXDtow/ · JA https://www.instagram.com/reel/Df1MqbRGyEd/ · TW https://www.instagram.com/reel/Df1MrfoHDW5/
+YouTube(공개): KO https://youtu.be/BmcFyBavrgU · EN https://youtu.be/gMR_f1qJBCU · JA https://youtu.be/je-My_W_uUQ · TW https://youtu.be/SJz4HdSgeds

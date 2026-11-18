@@ -22,5 +22,6 @@ TW: 一般蓋房子 App 只是堆體素方塊。houscaper 不是體素，是 BMC
 ## Shorts 제목
 KO 복셀이 아니라 BMC, 그래서 진짜로 만들 수 있다 #shorts / EN Not voxels. BMC. So you can really build it #shorts / JA ボクセルじゃなくBMC、だから本当に作れる #shorts / TW 不是體素，是 BMC，所以真的做得出來 #shorts
 
-## 게시
-아직 안 올림. 사용자 OK 대기.
+## 게시 (11/18 ~14:40 KST, 광고 없음)
+IG: KO https://www.instagram.com/reel/Df3xcMEDrIL/ · EN https://www.instagram.com/reel/Df3xV-vjjN4/ · JA https://www.instagram.com/reel/Df3xWIRDD9o/ · TW https://www.instagram.com/reel/Df3xbRzkfCw/
+YouTube: KO https://youtu.be/gahtXVR6FG8 · EN https://youtu.be/ZL4CpD3ygnw · JA https://youtu.be/aVQLl5FcIYQ · TW https://youtu.be/eDcS4Lxuru8
